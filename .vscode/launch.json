@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug STM32F429ZI",
+      "type": "cortex-debug",
+      "request": "launch",
+      "servertype": "openocd",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/build/ninja/f429zi_os3_gcc.elf",
+      "device": "STM32F429ZI",
+      "deviceName": "STM32F429ZI",
+      "configFiles": [
+        "interface/stlink.cfg",
+        "target/stm32f4x.cfg"
+      ],
+      "gdbPath": "gdb-multiarch",
+      "preLaunchTask": "CMake: build",
+      "runToEntryPoint": "main",
+      "loadFiles": [
+        "${workspaceFolder}/build/ninja/f429zi_os3_gcc.elf"
+      ],
+      "postLaunchCommands": [
+        "monitor reset halt"
+      ],
+      "showDevDebugOutput": "none"
+    }
+  ]
+}

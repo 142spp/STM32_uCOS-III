@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.20)
 
 project(nucleo_f429zi_example C ASM)
 
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
+endif()
+
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -79,6 +83,8 @@ target_compile_options(f429zi_os3_gcc.elf PRIVATE
     -mthumb
     -mfpu=fpv4-sp-d16
     -mfloat-abi=hard
+    -Og
+    -g3
     -ffunction-sections
     -fdata-sections
     -Wall

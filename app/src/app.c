@@ -107,7 +107,7 @@ static  CPU_STK  Task_500ms_Stack[APP_CFG_TASK_START_STK_SIZE];
 static  CPU_STK  Task_1000ms_Stack[APP_CFG_TASK_START_STK_SIZE];
 static  CPU_STK  Task_2000ms_Stack[APP_CFG_TASK_START_STK_SIZE];
 static  CPU_STK  Task_SerialRx_Stack[APP_CFG_TASK_START_STK_SIZE];
-int count=0;
+volatile int count=0;
 task_t cyclic_tasks[TASK_N] = {
    {"Task_SerialRx", AppTask_SerialRx, 0, &Task_SerialRx_Stack[0], &Task_SerialRx_TCB},
    {"Task_500ms" , AppTask_500ms,  0, &Task_500ms_Stack[0] , &Task_500ms_TCB},
@@ -148,19 +148,20 @@ int main(void)
     /* OS Init */
     OSInit(&err);                                               /* Init uC/OS-III.                                      */
 
-    OSTaskCreate((OS_TCB       *)&AppTaskStartTCB,              /* Create the start task                                */
-                 (CPU_CHAR     *)"App Task Start",
-                 (OS_TASK_PTR   )AppTaskStart,
-                 (void         *)0u,
-                 (OS_PRIO       )APP_CFG_TASK_START_PRIO,
-                 (CPU_STK      *)&AppTaskStartStk[0u],
-                 (CPU_STK_SIZE  )AppTaskStartStk[APP_CFG_TASK_START_STK_SIZE / 10u],
-                 (CPU_STK_SIZE  )APP_CFG_TASK_START_STK_SIZE,
-                 (OS_MSG_QTY    )0u,
-                 (OS_TICK       )0u,
-                 (void         *)0u,
-                 (OS_OPT        )(OS_OPT_TASK_STK_CHK | OS_OPT_TASK_STK_CLR),
-                 (OS_ERR       *)&err);
+    OSTaskCreate((OS_TCB*)       	&AppTaskStartTCB,              /* Create the start task                                */
+                 (CPU_CHAR*)   		"App Task Start",
+                 (OS_TASK_PTR) 		AppTaskStart,
+                 (void*)         	0u,
+                 (OS_PRIO)			APP_CFG_TASK_START_PRIO,
+                 (CPU_STK*)		&AppTaskStartStk[0u],
+                 (CPU_STK_SIZE)	AppTaskStartStk[APP_CFG_TASK_START_STK_SIZE / 10u],
+                 (CPU_STK_SIZE)	APP_CFG_TASK_START_STK_SIZE,
+                 (OS_MSG_QTY)		0u,
+                 (OS_TICK)		0u,
+                 (void*)				0u,
+                 (OS_OPT)				(OS_OPT_TASK_STK_CHK | OS_OPT_TASK_STK_CLR),
+                 (OS_ERR*)			&err
+				);
 
    OSStart(&err);   /* Start multitasking (i.e. give control to uC/OS-III). */
 
@@ -345,19 +346,19 @@ static  void  AppTaskCreate (void)
       pTask_Cfg = &cyclic_tasks[idx];
 
       OSTaskCreate(
-            pTask_Cfg->pTcb,
-            pTask_Cfg->name,
-            pTask_Cfg->func,
-            (void         *)0u,
-            pTask_Cfg->prio,
-            pTask_Cfg->pStack,
-            pTask_Cfg->pStack[APP_CFG_TASK_START_STK_SIZE / 10u],
-            APP_CFG_TASK_START_STK_SIZE,
-            (OS_MSG_QTY    )0u,
-            (OS_TICK       )0u,
-            (void         *)0u,
-            (OS_OPT        )(OS_OPT_TASK_STK_CHK | OS_OPT_TASK_STK_CLR),
-            (OS_ERR       *)&err
+            (OS_TCB *) 		pTask_Cfg->pTcb,
+            (CPU_CHAR *) 	pTask_Cfg->name,
+            (OS_TASK_PTR) 	pTask_Cfg->func,
+            (void *)			0u,
+            (OS_PRIO) 		pTask_Cfg->prio,
+            (CPU_STK *)	pTask_Cfg->pStack,
+            (CPU_STK) 	pTask_Cfg->pStack[APP_CFG_TASK_START_STK_SIZE / 10u],
+			(CPU_STK)		APP_CFG_TASK_START_STK_SIZE,
+            (OS_MSG_QTY)	0u,
+            (OS_TICK)	0u,
+            (void *)			0u,
+            (OS_OPT)			(OS_OPT_TASK_STK_CHK | OS_OPT_TASK_STK_CLR),
+            (OS_ERR *)		&err
       );
    }
 }

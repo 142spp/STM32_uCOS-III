@@ -47,3 +47,18 @@ openocd -f interface/stlink.cfg -f target/stm32f4x.cfg \
   -c "program build/ninja/f429zi_os3_gcc.elf verify reset exit"
 ```
 
+## Debug
+
+Install the VS Code Cortex-Debug extension and make sure `arm-none-eabi-gdb` is installed.
+
+```bash
+sudo apt install gdb-multiarch
+```
+
+If your distro does not provide `arm-none-eabi-gdb`, change `.vscode/launch.json` `gdbPath` to `gdb-multiarch`.
+
+Run:
+
+```text
+Run and Debug -> Debug STM32F429ZI
+```

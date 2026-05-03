@@ -4,10 +4,12 @@
     "--query-driver=/usr/bin/arm-none-eabi-*"
   ],
   "C_Cpp.intelliSenseEngine": "disabled",
+  "editor.detectIndentation": false,
+  "editor.tabSize": 4,
+  "editor.insertSpaces": true,
   "files.watcherExclude": {
     "**/build/**": true,
     "**/_build/**": true,
     "**/Debug/**": true
   }
 }
-
