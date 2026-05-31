@@ -1,4 +1,6 @@
-build/
+/build/
+!tools/build/
+!tools/build/*.cmake
 _build/
 *.elf
 *.bin
@@ -7,4 +9,3 @@ _build/
 *.list
 *.o
 *.d
-

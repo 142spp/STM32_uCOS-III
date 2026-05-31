@@ -1,215 +1,311 @@
 /*
 *********************************************************************************************************
-*                                              EXAMPLE CODE
+*                                             HW#5 STARTER CODE
 *
-*                             (c) Copyright 2013; Micrium, Inc.; Weston, FL
+*                                  uC/OS-III USART LED Command Control
 *
-*                   All rights reserved.  Protected by international copyright laws.
-*                   Knowledge of the source code may not be used to write a similar
-*                   product.  This file may only be used in accordance with a license
-*                   and should not be redistributed in any way.
+* Board assumption:
+*   USART3 TX : PD9
+*   USART3 RX : PD8
+*   LED1      : PB0
+*   LED2      : PB7
+*   LED3      : PB14
+*
+* Starter code provides uC/OS startup, USART3/GPIO setup, and USART output.
 *********************************************************************************************************
 */
+
+#include <includes.h>
+#include "os.h"
+#include "stm32f4xx_rcc.h"
+#include "stm32f4xx_gpio.h"
+#include "stm32f4xx_usart.h"
+#include "stm32f4xx.h"
 
 /*
 *********************************************************************************************************
-*
-*                                            EXAMPLE CODE
-*
-*                                       IAR Development Kits
-*                                              on the
-*
-*                                    STM32F429II-SK KICKSTART KIT
-*
-* Filename      : app.c
-* Version       : V1.00
-* Programmer(s) : YS
-*                 DC
+*                                            LOCAL DEFINES
 *********************************************************************************************************
 */
 
-/*
-*********************************************************************************************************
-*                                             INCLUDE FILES
-*********************************************************************************************************
-*/
+#define APP_TASK_STK_SIZE      256u
+#define LED_COUNT				 3u
+#define APP_TASK_USART_PRIO		10u
+#define APP_TASK_LED_PRIO		11u
 
-#include  <includes.h>
-#include  "serial.h"
-#include  "tasks.h"
-
-#include  "stm32f4xx_gpio.h"
-#include  "stm32f4xx_rcc.h"
 /*
 *********************************************************************************************************
 *                                         FUNCTION PROTOTYPES
 *********************************************************************************************************
 */
-static  void  AppTaskStart          (void     *p_arg);
-static  void  AppObjCreate          (void);
+
+static void AppTaskStart(void *p_arg);
+static void AppTaskCreate(void);
+
+static void AppTaskUsart(void *p_arg);
+static void AppTaskLed(void *p_arg);
 
 static void Setup_Gpio(void);
+static void Setup_Usart3(void);
 
+static void UsartPutChar(char c);
+static void UsartPrint(const char *s);
+
+static void HandleCommand(char *cmd);
 
 /*
 *********************************************************************************************************
 *                                       LOCAL GLOBAL VARIABLES
 *********************************************************************************************************
 */
-/* ----------------- APPLICATION GLOBALS -------------- */
-static  OS_TCB   AppTaskStartTCB;
-static  CPU_STK  AppTaskStartStk[APP_CFG_TASK_START_STK_SIZE];
-/* ------------ FLOATING POINT TEST TASK -------------- */
+
+static OS_TCB  AppTaskStartTCB;
+static CPU_STK AppTaskStartStk[APP_CFG_TASK_START_STK_SIZE];
+
+static OS_TCB  UsartTaskTCB;
+static CPU_STK UsartTaskStk[APP_TASK_STK_SIZE];
+
+static OS_TCB  LedTaskTCB;
+static CPU_STK LedTaskStk[APP_TASK_STK_SIZE];
+
 /*
 *********************************************************************************************************
 *                                                main()
-*
-* Description : This is the standard entry point for C code.  It is assumed that your code will call
-*               main() once you have performed all necessary initialization.
-*
-* Arguments   : none
-*
-* Returns     : none
 *********************************************************************************************************
 */
 
 int main(void)
 {
-    OS_ERR  err;
+    OS_ERR err;
 
-    /* Basic Init */
     RCC_DeInit();
-//    SystemCoreClockUpdate();
+
     Setup_Gpio();
+    Setup_Usart3();
 
-    /* BSP Init */
-    BSP_IntDisAll();                                            /* Disable all interrupts.                              */
+    BSP_IntDisAll();
 
-    CPU_Init();                                                 /* Initialize the uC/CPU Services                       */
-    Mem_Init();                                                 /* Initialize Memory Management Module                  */
-    Math_Init();                                                /* Initialize Mathematical Module                       */
+    CPU_Init();
+    Mem_Init();
+    Math_Init();
 
+    OSInit(&err);
 
-    /* OS Init */
-    OSInit(&err);                                               /* Init uC/OS-III.                                      */
+    OSTaskCreate(&AppTaskStartTCB,
+                 "App Task Start",
+                 AppTaskStart,
+                 0u,
+                 APP_CFG_TASK_START_PRIO,
+                 &AppTaskStartStk[0u],
+                 APP_CFG_TASK_START_STK_SIZE / 10u,
+                 APP_CFG_TASK_START_STK_SIZE,
+                 0u,
+                 0u,
+                 0u,
+                 OS_OPT_TASK_STK_CHK | OS_OPT_TASK_STK_CLR,
+                 &err);
 
-    OSTaskCreate((OS_TCB*)       	&AppTaskStartTCB,              /* Create the start task                                */
-                 (CPU_CHAR*)   		"App Task Start",
-                 (OS_TASK_PTR) 		AppTaskStart,
-                 (void*)         	0u,
-                 (OS_PRIO)			APP_CFG_TASK_START_PRIO,
-                 (CPU_STK*)		&AppTaskStartStk[0u],
-                 (CPU_STK_SIZE)	AppTaskStartStk[APP_CFG_TASK_START_STK_SIZE / 10u],
-                 (CPU_STK_SIZE)	APP_CFG_TASK_START_STK_SIZE,
-                 (OS_MSG_QTY)		0u,
-                 (OS_TICK)		0u,
-                 (void*)				0u,
-                 (OS_OPT)				(OS_OPT_TASK_STK_CHK | OS_OPT_TASK_STK_CLR),
-                 (OS_ERR*)			&err
-				);
+    OSStart(&err);
 
-   OSStart(&err);   /* Start multitasking (i.e. give control to uC/OS-III). */
-
-   (void)&err;
-
-   return (0u);
+    while (DEF_TRUE) {
+    }
 }
+
 /*
 *********************************************************************************************************
 *                                          STARTUP TASK
-*
-* Description : This is an example of a startup task.  As mentioned in the book's text, you MUST
-*               initialize the ticker only once multitasking has started.
-*
-* Arguments   : p_arg   is the argument passed to 'AppTaskStart()' by 'OSTaskCreate()'.
-*
-* Returns     : none
-*
-* Notes       : 1) The first line of code is used to prevent a compiler warning because 'p_arg' is not
-*                  used.  The compiler should not generate any code for this statement.
-*********************************************************************************************************
-*/
-static  void  AppTaskStart (void *p_arg)
-{
-    OS_ERR  err;
-
-   (void)p_arg;
-
-    BSP_Init();                                                 /* Initialize BSP functions                             */
-    BSP_Tick_Init();                                            /* Initialize Tick Services.                            */
-    Serial_Init();                                              /* Initialize USART after BSP clock setup.              */
-
-#if OS_CFG_STAT_TASK_EN > 0u
-    OSStatTaskCPUUsageInit(&err);                               /* Compute CPU capacity with no task running            */
-#endif
-
-#ifdef CPU_CFG_INT_DIS_MEAS_EN
-    CPU_IntDisMeasMaxCurReset();
-#endif
-
-   // BSP_LED_Off(0u);                                            /* Turn Off LEDs after initialization                   */
-
-   APP_TRACE_DBG(("Creating Application Kernel Objects\n\r"));
-   AppObjCreate();                                             /* Create Applicaiton kernel objects                    */
-
-   APP_TRACE_DBG(("Creating Application Tasks\n\r"));
-   AppTasks_Create();                                          /* Create Application tasks                             */
-}
-
-
-/*
-*********************************************************************************************************
-*                                          AppObjCreate()
-*
-* Description : Create application kernel objects tasks.
-*
-* Argument(s) : none
-*
-* Return(s)   : none
-*
-* Caller(s)   : AppTaskStart()
-*
-* Note(s)     : none.
 *********************************************************************************************************
 */
 
-static  void  AppObjCreate (void)
+static void AppTaskStart(void *p_arg)
 {
+    (void)p_arg;
 
+    BSP_Init();
+    BSP_Tick_Init();
+	
+
+    BSP_LED_Off(0u);
+
+    UsartPrint("\r\nHW#5 USART LED Command Starter\r\n");
+    UsartPrint("> ");
+
+    AppTaskCreate();
 }
 
 /*
 *********************************************************************************************************
-*                                          Setup_Gpio()
-*
-* Description : Configure LED GPIOs directly
-*
-* Argument(s) : none
-*
-* Return(s)   : none
-*
-* Caller(s)   : AppTaskStart()
-*
-* Note(s)     :
-*              LED1 PB0
-*              LED2 PB7
-*              LED3 PB14
-*
+*                                          TASK CREATION
 *********************************************************************************************************
 */
+
+static void AppTaskCreate(void)
+{
+	OS_ERR err;
+
+	OSTaskCreate(&UsartTaskTCB,
+                 "Usart Task",
+                 AppTaskUsart,
+                 0u,
+                 APP_TASK_USART_PRIO,
+                 &UsartTaskStk[0u],
+                 APP_TASK_STK_SIZE / 10u,
+                 APP_TASK_STK_SIZE,
+                 0u,
+                 0u,
+                 0u,
+                 OS_OPT_TASK_STK_CHK | OS_OPT_TASK_STK_CLR,
+                 &err);
+
+	OSTaskCreate(&LedTaskTCB,
+                 "Led Task",
+                 AppTaskLed,
+                 0u,
+                 APP_TASK_LED_PRIO,
+                 &LedTaskStk[0u],
+                 APP_TASK_STK_SIZE / 10u,
+                 APP_TASK_STK_SIZE,
+                 0u,
+                 0u,
+                 0u,
+                 OS_OPT_TASK_STK_CHK | OS_OPT_TASK_STK_CLR,
+                 &err);
+
+}
+
+/*
+*********************************************************************************************************
+*                                      USART COMMAND RECEIVE TASK
+*********************************************************************************************************
+*/
+
+static void AppTaskUsart(void *p_arg)
+{
+    (void)p_arg;
+
+    /*
+     * TODO
+     */
+}
+
+/*
+*********************************************************************************************************
+*                                          LED CONTROL TASK
+*********************************************************************************************************
+*/
+
+static void AppTaskLed(void *p_arg)
+{
+	OS_ERR err;
+
+	CPU_BOOLEAN led_on = DEF_FALSE;
+
+	while(DEF_TRUE){
+		for(unsigned int i=1; i <= LED_COUNT; i++){
+			if(led_on == DEF_TRUE)   BSP_LED_On(i);
+			else  					 BSP_LED_Off(i);
+		}
+		if (led_on == DEF_FALSE) led_on = DEF_TRUE;
+		else led_on = DEF_TRUE;
+		OSTimeDlyHMSM(0u, 0u, 0u, 500u, OS_OPT_TIME_HMSM_NON_STRICT, &err);
+	}
+}
+
+/*
+*********************************************************************************************************
+*                                          COMMAND PARSER
+*********************************************************************************************************
+*/
+
+static void HandleCommand(char *cmd)
+{
+    (void)cmd;
+
+}
+
+/*
+*********************************************************************************************************
+*                                          GPIO SETUP
+*********************************************************************************************************
+*/
+
 static void Setup_Gpio(void)
 {
-   GPIO_InitTypeDef led_init = {0};
+    GPIO_InitTypeDef gpio_init = {0};
 
-   RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);
-   RCC_AHB2PeriphClockCmd(RCC_APB2Periph_SYSCFG, ENABLE);
+    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_SYSCFG, ENABLE);
 
-   led_init.GPIO_Mode   = GPIO_Mode_OUT;
-   led_init.GPIO_OType  = GPIO_OType_PP;
-   led_init.GPIO_Speed  = GPIO_Speed_2MHz;
-   led_init.GPIO_PuPd   = GPIO_PuPd_NOPULL;
-   led_init.GPIO_Pin    = GPIO_Pin_0 | GPIO_Pin_7 | GPIO_Pin_14;
+    gpio_init.GPIO_Mode  = GPIO_Mode_OUT;
+    gpio_init.GPIO_OType = GPIO_OType_PP;
+    gpio_init.GPIO_Speed = GPIO_Speed_2MHz;
+    gpio_init.GPIO_PuPd  = GPIO_PuPd_NOPULL;
+    gpio_init.GPIO_Pin   = GPIO_Pin_0 | GPIO_Pin_7 | GPIO_Pin_14;
 
-   GPIO_Init(GPIOB, &led_init);
+    GPIO_Init(GPIOB, &gpio_init);
 }
 
+/*
+*********************************************************************************************************
+*                                          USART3 SETUP
+*********************************************************************************************************
+*/
+
+static void Setup_Usart3(void)
+{
+    GPIO_InitTypeDef gpio_init = {0};
+    USART_InitTypeDef usart_init = {0};
+
+    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOD, ENABLE);
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
+
+    GPIO_PinAFConfig(GPIOD, GPIO_PinSource8, GPIO_AF_USART3);
+    GPIO_PinAFConfig(GPIOD, GPIO_PinSource9, GPIO_AF_USART3);
+
+    gpio_init.GPIO_Pin   = GPIO_Pin_8 | GPIO_Pin_9;
+    gpio_init.GPIO_Mode  = GPIO_Mode_AF;
+    gpio_init.GPIO_OType = GPIO_OType_PP;
+    gpio_init.GPIO_PuPd  = GPIO_PuPd_UP;
+    gpio_init.GPIO_Speed = GPIO_Speed_50MHz;
+
+    GPIO_Init(GPIOD, &gpio_init);
+
+    usart_init.USART_BaudRate = 115200;
+    usart_init.USART_WordLength = USART_WordLength_8b;
+    usart_init.USART_StopBits = USART_StopBits_1;
+    usart_init.USART_Parity = USART_Parity_No;
+    usart_init.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+    usart_init.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
+
+    USART_Init(USART3, &usart_init);
+    USART_Cmd(USART3, ENABLE);
+}
+
+/*
+*********************************************************************************************************
+*                                          USART OUTPUT HELPERS
+*********************************************************************************************************
+*/
+
+static char UsartGetChar(void)
+{
+	if (USART_GetFlagStatus(USART3, USART_FLAG_RXNE) == SET){
+		char ch= (char)(USART_ReceiveData(USART3) & 0xFFu);
+		return ch;
+	}
+	return '\0';
+}
+
+static void UsartPutChar(char c)
+{
+    while (USART_GetFlagStatus(USART3, USART_FLAG_TXE) == RESET) {}
+
+    USART_SendData(USART3, (uint16_t)c);
+}
+
+static void UsartPrint(const char *s)
+{
+    while (*s != '\0') {
+        UsartPutChar(*s++);
+    }
+}

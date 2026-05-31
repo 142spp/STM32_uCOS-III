@@ -37,7 +37,7 @@
       "dependsOn": [
         "CMake: configure"
       ],
-      "problemMatcher": "$gcc"
+      "problemMatcher": []
     },
     {
       "label": "CMake: flash",
@@ -55,7 +55,7 @@
       "dependsOn": [
         "CMake: build"
       ],
-      "problemMatcher": "$gcc"
+      "problemMatcher": []
     }
   ]
 }

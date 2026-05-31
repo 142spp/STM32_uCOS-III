@@ -1,0 +1,40 @@
+HW #5 과제내용
+5-1) USART echo + LED blink 구현
+USART task: USART를 사용하여 키보드를 사용하여 입력한 문자를 보드가 수신하고, 보드에서 입력 받은 문자를 시리얼 터미널에서 표시되게 함
+LED task: LED blink (주기적으로 on/off를 반복) 동작으로 하는 task로 1개 이상으로 구현하면 됨
+5-2) LED command 구현
+USART를 통하여, LED1, 2, 3을 on/off/blink 하는 명령을 입력하여 LED 제어
+
+USART task와 LED task를 별도로 생성
+
+USART 명령어 형식은 "led" + 번호 + 명령 (on/off/blink t) 로 구성됨 (t는 blink 주기를 뜻함 — 단위는 초)
+
+예:
+
+"led3on" 입력 시, LED3 를 on
+"led2off" 입력 시, LED2 를 off
+"led1blink3" 입력 시, LED1을 3초에 한 번씩 blink
+"reset" 입력 시, 모든 LED는 off됨
+LED task와 USART task 간의 communication은 global variable을 사용하여 command를 구현
+
+예를 들어 int LED1CMD; 선언하여 약속된 값(ON, OFF, BLINK 등)을 USART와 LED task가 활용
+
+LED task는 주기적으로 command에 따라 구성을 변경하여 LED를 제어
+
+global variable을 접근할 때 critical section으로 보호하여야 함
+
+OS_CRITICAL_ENTER() / OS_CRITICAL_EXIT() 이용
+
+Ch13. Listing 13-3을 참고하여 수행하기 바랍니다.
+
+CPU_CRITICAL_ENTER();
+/* Access the resource; */
+CPU_CRITICAL_EXIT();
+제출물
+과제 수행 내용을 설명하는 간략한 리포트 (작성한 code 부분 인용)를 작성
+5-1 과제 code와 5-2 과제 code를 제출 (app.c)
+동작 동영상 (YouTube 등 동영상 link도 가능)
+일정
+2026-05-21 (목): HW#5 공지·시작
+2026-06-02 (화) 23:59: 제출 마감 (이후 delay 처리, 1일당 -5점 감점)
+2026-06-05 (금) 23:59: hard deadline (이후 제출 불가)
