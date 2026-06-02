@@ -11,5 +11,6 @@
     "**/build/**": true,
     "**/_build/**": true,
     "**/Debug/**": true
-  }
+},
+"cortex-debug.variableUseNaturalFormat": true
 }

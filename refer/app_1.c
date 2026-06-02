@@ -15,11 +15,8 @@
 *********************************************************************************************************
 */
 
-#include <ctype.h>
 #include <includes.h>
 #include "bsp.h"
-#include "cpu.h"
-#include "lib_str.h"
 #include "os.h"
 #include "stm32f4xx_rcc.h"
 #include "stm32f4xx_gpio.h"
@@ -38,17 +35,6 @@
 #define APP_TASK_USART_PRIO		10u
 #define APP_TASK_LED_PRIO		11u
 
-/*
-*********************************************************************************************************
-*                                            LOCAL DEFINES
-*********************************************************************************************************
-*/
-
-typedef enum {
-	LED_ON, 
-	LED_OFF, 
-	LED_BLINK
-} ledcmd;
 
 /*
 *********************************************************************************************************
@@ -70,7 +56,6 @@ static void UsartPutChar(char c);
 static void UsartPrint(const char *s);
 
 static void HandleCommand(char *cmd);
-static int  min(int a, int b);
 
 /*
 *********************************************************************************************************
@@ -86,12 +71,6 @@ static CPU_STK 	UsartTaskStk[APP_TASK_STK_SIZE];
 
 static OS_TCB  	LedTaskTCB;
 static CPU_STK 	LedTaskStk[APP_TASK_STK_SIZE];
-
-
-static ledcmd 	LedMode[LED_COUNT+1];
-static int 		LedPeriod[LED_COUNT+1];
-static char 	CmdBuffer[CMD_BUF_SIZE];
-static int		CmdLen;
 
 /*
 *********************************************************************************************************
@@ -208,26 +187,11 @@ static void AppTaskUsart(void *p_arg)
 {
 	OS_ERR err;
 	char ch;
-	CPU_SR_ALLOC();
 
 	while(DEF_TRUE){	
 		ch = UsartGetChar();
 		if( ch != '\0' ){
-			if (ch == '\r' || ch == '\n') {
-				OS_CRITICAL_ENTER();
-				CmdLen = 0;
-				OS_CRITICAL_EXIT();
-				UsartPrint("\r\n");
-				continue;
-			}				
-			OS_CRITICAL_ENTER();
-			CmdBuffer[CmdLen++] = ch;
-			CmdBuffer[CmdLen] = '\0';
-			OS_CRITICAL_EXIT();
-			
 			UsartPutChar(ch); 
-			HandleCommand(CmdBuffer);
-			
 		} 
 		OSTimeDlyHMSM(0u, 0u, 0u, 10u, \
 			OS_OPT_TIME_HMSM_NON_STRICT, &err);
@@ -243,38 +207,18 @@ static void AppTaskUsart(void *p_arg)
 static void AppTaskLed(void *p_arg)
 {
 	OS_ERR err;
-	
-	CPU_INT08U 	led;
-	CPU_BOOLEAN ledstats[LED_COUNT+1] = {0u,0u,0u,0u};
-	CPU_INT08U 	ledseconds[LED_COUNT+1] = {0u,0u,0u,0u};
-	
-	ledcmd mode;
-	int period;
-	
-	CPU_SR_ALLOC();
 
-	while(DEF_TRUE){
-		for(led=1u; led <= LED_COUNT; led++){
-			OS_CRITICAL_ENTER();
-			mode = LedMode[led];
-			period = LedPeriod[led];
-			OS_CRITICAL_EXIT();
-			if(mode == LED_ON || (mode == LED_BLINK && ledstats[led] == 1u)){
-				BSP_LED_On(led);
-				ledstats[led] = DEF_TRUE;
-			}else{
-				BSP_LED_Off(led);
-				ledstats[led] = DEF_FALSE;
-			}
-			if(mode == LED_BLINK){
-				ledseconds[led]++;
-				if(ledseconds[led] == period){
-					ledstats[led] ^= DEF_TRUE;
-					ledseconds[led] = 0u;
-				}
-			}
+	CPU_BOOLEAN led_on = DEF_FALSE;
+
+	while(DEF_TRUE)
+	{
+		for(unsigned int i=1; i <= LED_COUNT; i++){
+			if(led_on == DEF_TRUE)   BSP_LED_On(i);
+			else  					 BSP_LED_Off(i);
 		}
-		OSTimeDlyHMSM(0u, 0u, 0u, 1000u, \
+		if (led_on == DEF_FALSE) led_on = DEF_TRUE;
+		else led_on = DEF_FALSE;
+		OSTimeDlyHMSM(0u, 0u, 0u, 500u, \
 			OS_OPT_TIME_HMSM_NON_STRICT, &err);
 	}
 }
@@ -285,73 +229,10 @@ static void AppTaskLed(void *p_arg)
 *********************************************************************************************************
 */
 
-static void HandleCommand(char *cmd){
+static void HandleCommand(char *cmd)
+{
+    (void)cmd;
 
-	CPU_SR_ALLOC();
-	OS_CRITICAL_ENTER();
-	int cmdlen = CmdLen;
-	OS_CRITICAL_EXIT();
-	
-	CPU_BOOLEAN wrongflag = DEF_FALSE;
-
-	while(DEF_TRUE){
-		if( cmdlen < 5 ) break;
-		if(	cmdlen == 5){
-			if (Str_Cmp_N(cmd, "reset", 5) == 0 ){
-				for ( CPU_INT08U led = 1u; led <= LED_COUNT; led++ ) {
-					OS_CRITICAL_ENTER();
-					LedMode[led] = LED_OFF;
-					OS_CRITICAL_EXIT();
-					BSP_LED_Off(led);
-				}
-				cmdlen = 0;
-			}
-			break;
-		}
-		if(cmdlen > 5){
-			if( Str_Cmp_N(cmd, "led", 3) != 0 ) break;
-			if( *(cmd+3) < '1' || *(cmd+3) > '3' ) break;
-			if( Str_Cmp_N(cmd+4,"on",cmdlen-4) == 0){
-				if(cmdlen!=6) break;
-				OS_CRITICAL_ENTER();
-				LedMode[(*(cmd+3)-'0')] = LED_ON;
-				OS_CRITICAL_EXIT();
-				BSP_LED_On(*(cmd+3)-'0');
-				cmdlen = 0;
-			}
-			else if(Str_Cmp_N(cmd+4,"off",cmdlen-4) == 0){
-				if(cmdlen!=7) break;
-				OS_CRITICAL_ENTER();
-				LedMode[(*(cmd+3)-'0')] = LED_OFF;
-				OS_CRITICAL_EXIT();
-				BSP_LED_Off(*(cmd+3)-'0');
-				cmdlen = 0;
-			}
-			else if(Str_Cmp_N(cmd+4, "blink", min(cmdlen-4,5)) == 0){
-				if( cmdlen != 10 ) break;
-				if( *(cmd+9) < '0' || *(cmd+9) > '3') {wrongflag = DEF_TRUE; break;}
-				OS_CRITICAL_ENTER();
-				LedMode[ *(cmd+3)-'0' ] = LED_BLINK;
-				LedPeriod[ *(cmd+3)-'0' ] = *(cmd+9)-'0';
-				OS_CRITICAL_EXIT();
-				cmdlen = 0;
-			}
-			else { wrongflag=DEF_TRUE; break; }
-		}
-		if(cmdlen == CMD_BUF_SIZE -1 ){ wrongflag = DEF_TRUE; break; }
-	}
-	if(wrongflag == DEF_TRUE){
-		UsartPrint("\r\nWrong Command\r\n");
-		cmdlen = 0;
-	}
-	OS_CRITICAL_ENTER();
-	CmdLen = cmdlen;
-	OS_CRITICAL_EXIT();
-}
-
-static int min(int a, int b){
-	if(a>b) return b;
-	else return a;
 }
 
 /*
