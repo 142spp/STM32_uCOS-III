@@ -1,0 +1,54 @@
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{caption}
+\usepackage{setspace}
+
+\definecolor{reportblue}{HTML}{1F4E79}
+\definecolor{reportgray}{HTML}{F3F6F8}
+\definecolor{darkgray}{HTML}{333333}
+
+\setstretch{1.18}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.58em}
+\setlength{\headheight}{15pt}
+\renewcommand{\arraystretch}{1.22}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small 텀프로젝트 제안서}
+\rhead{\small 스마트 주차장 제어 시스템}
+\cfoot{\small \thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\titleformat{\section}
+  {\Large\bfseries\color{reportblue}}
+  {\thesection}{0.7em}{}
+  [\titlerule]
+
+\titleformat{\subsection}
+  {\large\bfseries\color{darkgray}}
+  {\thesubsection}{0.6em}{}
+
+\titleformat{\subsubsection}
+  {\normalsize\bfseries\color{darkgray}}
+  {\thesubsubsection}{0.5em}{}
+
+\captionsetup{font=small,labelfont=bf}
+
+\let\oldlongtable\longtable
+\let\endoldlongtable\endlongtable
+\renewenvironment{longtable}{\small\oldlongtable}{\endoldlongtable}
+
+\AtBeginDocument{
+  \hypersetup{
+    colorlinks=true,
+    linkcolor=reportblue,
+    urlcolor=reportblue,
+    citecolor=reportblue
+  }
+}
