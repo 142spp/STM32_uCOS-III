@@ -21,6 +21,7 @@ static void AlarmLogTask(void *p_arg)
     OS_ERR       err;
     OS_MSG_SIZE  size;
     void        *p_data;
+    LOG_EVENT    event;
 
     (void)p_arg;
 
@@ -31,10 +32,36 @@ static void AlarmLogTask(void *p_arg)
         if (err != OS_ERR_NONE) {
             continue;
         }
-        /* LogQueue 메시지는 정적 문자열 포인터. USART 출력을 이 task로 단일화한다. */
-        Usart_PutStr((const char *)p_data);
+        event = (LOG_EVENT)(CPU_ADDR)p_data;        /* 포인터에 인코딩된 이벤트 코드 */
 
-        /* TODO: 만차 등 경고 이벤트일 때 Buzzer_On()/Buzzer_Off() 처리 */
+        /* 로그 문자열과 부저는 이 task가 결정 (USART 출력 단일화) */
+        switch (event) {
+            case LOG_ENTRANCE_DETECTED:
+                Usart_PutStr("[EVENT] entrance_detected\r\n");
+                break;
+
+            case LOG_GATE_OPEN:
+                Usart_PutStr("[GATE] open\r\n");
+                break;
+
+            case LOG_GATE_CLOSE:
+                Usart_PutStr("[GATE] close\r\n");
+                break;
+
+            case LOG_FULL_DENIED:
+                Usart_PutStr("[ALARM] parking_full entrance_denied\r\n");
+                Buzzer_On();
+                OSTimeDlyHMSM(0u, 0u, 0u, 500u, OS_OPT_TIME_HMSM_STRICT, &err);
+                Buzzer_Off();
+                break;
+
+            case LOG_EXIT:
+                Usart_PutStr("[BUTTON] exit_event_logged\r\n");
+                break;
+
+            default:
+                break;
+        }
     }
 }
 

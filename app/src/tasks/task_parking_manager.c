@@ -42,6 +42,24 @@ static void Manager_RecountFree(void)
     }
 }
 
+/* 현재 상태 스냅샷을 DisplayTask로 전송 */
+static void Manager_SendDisplay(void)
+{
+    DISPLAY_MSG *p_disp;
+    CPU_INT08U   i;
+
+    p_disp = IPC_DisplayAlloc();
+    if (p_disp == (DISPLAY_MSG *)0) {
+        return;
+    }
+    p_disp->free_count = FreeCount;
+    p_disp->gate_open  = GateOpen;
+    for (i = 0u; i < APP_SLOT_COUNT; i++) {
+        p_disp->slot[i] = SlotState[i];
+    }
+    IPC_PostDisplay(p_disp);
+}
+
 /* 측정 거리로 한 칸의 점유 상태 갱신. RESERVED는 점유 확정 시에만 OCCUPIED로 바뀐다. */
 static void Manager_OnSensor(CPU_INT08U slot, CPU_INT16U dist_mm)
 {
@@ -64,7 +82,10 @@ static void Manager_OnSensor(CPU_INT08U slot, CPU_INT16U dist_mm)
 /* 입차 요청: 빈칸이 있으면 예약 후 차단기 개방, 없으면 거부. */
 static void Manager_OnEntrance(void)
 {
+    OS_ERR     err;
     CPU_INT08U i;
+
+    IPC_PostLog(LOG_ENTRANCE_DETECTED);
 
     if (FreeCount > 0u) {
         for (i = 0u; i < APP_SLOT_COUNT; i++) {
@@ -76,9 +97,11 @@ static void Manager_OnEntrance(void)
         Manager_RecountFree();
         Manager_SendGate(GATE_OPEN);
         GateOpen = DEF_TRUE;
-        /* TODO: OSTmrStart(&GateTimer) 로 N초 자동 닫힘 시작 */
+        OSTmrStart(&GateTimer, &err);           /* N초 후 자동 닫힘 */
+        IPC_PostLog(LOG_GATE_OPEN);
     } else {
-        Manager_SendGate(GATE_DENY);            /* 만차: LED/부저/로그는 Gate/Alarm task가 처리 */
+        Manager_SendGate(GATE_DENY);            /* 만차 */
+        IPC_PostLog(LOG_FULL_DENIED);
     }
 }
 
@@ -86,12 +109,13 @@ static void Manager_OnGateTimeout(void)
 {
     Manager_SendGate(GATE_CLOSE);
     GateOpen = DEF_FALSE;
+    IPC_PostLog(LOG_GATE_CLOSE);
 }
 
 static void Manager_OnExit(void)
 {
     /* 버튼은 상태를 직접 비우지 않는다. 출차 이벤트만 기록. 빈자리는 초음파로만 갱신. */
-    /* TODO: LogQueue로 출차 이벤트 전송 */
+    IPC_PostLog(LOG_EXIT);
 }
 
 /*
@@ -132,7 +156,7 @@ static void ParkingManagerTask(void *p_arg)
 
         IPC_MsgFree(p_msg);
 
-        /* TODO: DisplayQueue로 현재 상태(빈자리 수/칸 상태/차단기) 전송 */
+        Manager_SendDisplay();                  /* 매 이벤트 후 화면 갱신 요청 */
     }
 }
 

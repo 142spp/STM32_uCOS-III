@@ -83,4 +83,31 @@ typedef enum {
     GATE_DENY                                   /* 만차: 차단기 유지 + 경고                            */
 } GATE_CMD;
 
+/*
+*********************************************************************************************************
+* DISPLAY MESSAGE (ParkingManager -> DisplayTask)
+*********************************************************************************************************
+*/
+
+typedef struct {
+    CPU_INT08U   free_count;                    /* 빈자리 수                                           */
+    CPU_BOOLEAN  gate_open;                     /* 차단기 열림 여부                                    */
+    SLOT_STATE   slot[APP_SLOT_COUNT];          /* 각 주차칸 상태                                      */
+} DISPLAY_MSG;
+
+/*
+*********************************************************************************************************
+* LOG EVENT (ParkingManager -> AlarmLogTask)
+*   값(enum)을 그대로 큐 포인터에 인코딩해 전달한다. 로그 문자열/부저는 AlarmLogTask가 결정한다.
+*********************************************************************************************************
+*/
+
+typedef enum {
+    LOG_ENTRANCE_DETECTED = 0,                  /* "[EVENT] entrance_detected"                         */
+    LOG_GATE_OPEN,                              /* "[GATE] open"                                       */
+    LOG_GATE_CLOSE,                             /* "[GATE] close"                                      */
+    LOG_FULL_DENIED,                            /* "[ALARM] parking_full entrance_denied" + 부저       */
+    LOG_EXIT                                    /* "[BUTTON] exit_event_logged"                        */
+} LOG_EVENT;
+
 #endif  /* APP_TYPES_H */

@@ -24,10 +24,15 @@ OS_TMR   GateTimer;
 #define  IPC_LOG_Q_SIZE         16u
 
 #define  IPC_MSG_POOL_BLKS      16u
+#define  IPC_DISP_POOL_BLKS     8u
 
 /* ManagerQueue로 오가는 MANAGER_MSG 블록 풀 (OSQPost는 포인터만 전달하므로 실체는 풀에 둔다) */
 static  OS_MEM      IpcMsgMem;
 static  MANAGER_MSG IpcMsgPool[IPC_MSG_POOL_BLKS];
+
+/* DisplayQueue로 오가는 DISPLAY_MSG 블록 풀 */
+static  OS_MEM      IpcDispMem;
+static  DISPLAY_MSG IpcDispPool[IPC_DISP_POOL_BLKS];
 
 /*
 *********************************************************************************************************
@@ -72,10 +77,17 @@ void IPC_Init(void)
                 sizeof(MANAGER_MSG),
                 &err);
 
-    /* dly/period 단위는 OS_CFG_TMR_TASK_RATE_HZ 기준. APP_GATE_OPEN_SEC 초에 맞춰 보정할 것. */
+    OSMemCreate(&IpcDispMem,
+                "Display Msg Pool",
+                (void *)&IpcDispPool[0],
+                IPC_DISP_POOL_BLKS,
+                sizeof(DISPLAY_MSG),
+                &err);
+
+    /* dly 단위 = OS_CFG_TMR_TASK_RATE_HZ(10Hz) tick. 즉 N초 = N*10. */
     OSTmrCreate(&GateTimer,
                 "Gate Auto-close Timer",
-                (OS_TICK)(APP_GATE_OPEN_SEC * 10u),     /* TODO: 타이머 task rate에 맞게 환산        */
+                (OS_TICK)(APP_GATE_OPEN_SEC * 10u),
                 0u,                                     /* one-shot                                  */
                 OS_OPT_TMR_ONE_SHOT,
                 IPC_GateTimerCb,
@@ -117,6 +129,49 @@ void IPC_PostManager(MANAGER_MSG *p_msg)
     OSQPost(&ManagerQueue,
             (void *)p_msg,
             sizeof(MANAGER_MSG),
+            OS_OPT_POST_FIFO,
+            &err);
+}
+
+DISPLAY_MSG *IPC_DisplayAlloc(void)
+{
+    OS_ERR       err;
+    DISPLAY_MSG *p_msg;
+
+    p_msg = (DISPLAY_MSG *)OSMemGet(&IpcDispMem, &err);
+    if (err != OS_ERR_NONE) {
+        return (DISPLAY_MSG *)0;
+    }
+    return p_msg;
+}
+
+void IPC_DisplayFree(DISPLAY_MSG *p_msg)
+{
+    OS_ERR  err;
+
+    if (p_msg != (DISPLAY_MSG *)0) {
+        OSMemPut(&IpcDispMem, (void *)p_msg, &err);
+    }
+}
+
+void IPC_PostDisplay(DISPLAY_MSG *p_msg)
+{
+    OS_ERR  err;
+
+    OSQPost(&DisplayQueue,
+            (void *)p_msg,
+            sizeof(DISPLAY_MSG),
+            OS_OPT_POST_FIFO,
+            &err);
+}
+
+void IPC_PostLog(LOG_EVENT event)
+{
+    OS_ERR  err;
+
+    OSQPost(&LogQueue,
+            (void *)event,                          /* enum 값을 포인터에 인코딩 */
+            sizeof(void *),
             OS_OPT_POST_FIFO,
             &err);
 }
