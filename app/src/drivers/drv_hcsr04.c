@@ -21,8 +21,8 @@
 #define  HCSR04_SENSOR_COUNT     2u
 #define  HCSR04_ECHO_TIMEOUT_US  25000u         /* ~4.3m 초과는 무효 처리                              */
 
-/* TIM2 입력 클럭 90MHz 가정 -> 1MHz(1us/tick) */
-#define  HCSR04_TIM_PSC          (90u - 1u)
+/* HCLK 168MHz -> APB1 42MHz -> APB1 타이머(TIM2) 84MHz. /84 = 1MHz(1us/tick) */
+#define  HCSR04_TIM_PSC          (84u - 1u)
 
 static const uint16_t HcTrigPin[HCSR04_SENSOR_COUNT]    = { GPIO_Pin_0,    GPIO_Pin_1    };
 static const uint16_t HcEchoChannel[HCSR04_SENSOR_COUNT] = { TIM_Channel_1, TIM_Channel_2 };

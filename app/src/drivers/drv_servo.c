@@ -14,8 +14,8 @@
 #include  "stm32f4xx_gpio.h"
 #include  "stm32f4xx_tim.h"
 
-/* TIM3 입력 클럭 90MHz 가정 -> 1MHz(1us/tick), 주기 20000us = 50Hz */
-#define  SERVO_TIM_PSC          (90u - 1u)
+/* HCLK 168MHz -> APB1 42MHz -> APB1 타이머(TIM3) 84MHz. /84 = 1MHz(1us/tick), 주기 20000us = 50Hz */
+#define  SERVO_TIM_PSC          (84u - 1u)
 #define  SERVO_TIM_PERIOD_US    20000u
 
 /* 펄스 폭(us). 실제 차단기 기구에 맞춰 보정한다. */
