@@ -1,6 +1,13 @@
 /*
 *********************************************************************************************************
 * Smart Parking - drv_hcsr04.c
+*
+* HC-SR04 x2. echo 펄스 폭을 TIM2 입력 캡처 인터럽트로 측정한다.
+*   TRIG : PE0 (sensor0), PE1 (sensor1)  - GPIO 출력
+*   ECHO : PA0 (TIM2_CH1), PA1 (TIM2_CH2) - AF1, 5V이므로 분압 회로 필수
+*
+* TIM2(32-bit)를 1us/tick로 구동. ISR은 에지 타임스탬프 캡처와 거리 환산만 하고
+* OS는 호출하지 않는다(RTOS 비의존). 대기는 호출 task가 OSTimeDly로 담당한다.
 *********************************************************************************************************
 */
 
@@ -9,22 +16,162 @@
 #include  "stm32f4xx_rcc.h"
 #include  "stm32f4xx_gpio.h"
 #include  "stm32f4xx_tim.h"
+#include  "bsp.h"
+
+#define  HCSR04_SENSOR_COUNT     2u
+#define  HCSR04_ECHO_TIMEOUT_US  25000u         /* ~4.3m 초과는 무효 처리                              */
+
+/* TIM2 입력 클럭 90MHz 가정 -> 1MHz(1us/tick) */
+#define  HCSR04_TIM_PSC          (90u - 1u)
+
+static const uint16_t HcTrigPin[HCSR04_SENSOR_COUNT]    = { GPIO_Pin_0,    GPIO_Pin_1    };
+static const uint16_t HcEchoChannel[HCSR04_SENSOR_COUNT] = { TIM_Channel_1, TIM_Channel_2 };
+
+static volatile uint32_t HcCaptureStart[HCSR04_SENSOR_COUNT];
+static volatile uint16_t HcDistanceMm[HCSR04_SENSOR_COUNT];
+static volatile uint8_t  HcEdgeRising[HCSR04_SENSOR_COUNT];
+static volatile uint8_t  HcReady[HCSR04_SENSOR_COUNT];
+
+/*
+*********************************************************************************************************
+* LOCAL HELPERS
+*********************************************************************************************************
+*/
+
+static void HCSR04_SetEdge(uint16_t channel, uint16_t polarity)
+{
+    TIM_ICInitTypeDef ic;
+
+    ic.TIM_Channel     = channel;
+    ic.TIM_ICPolarity  = polarity;
+    ic.TIM_ICSelection = TIM_ICSelection_DirectTI;
+    ic.TIM_ICPrescaler = TIM_ICPSC_DIV1;
+    ic.TIM_ICFilter    = 0u;
+    TIM_ICInit(TIM2, &ic);
+}
+
+static void HCSR04_DelayUs(uint32_t us)
+{
+    uint32_t t0 = TIM_GetCounter(TIM2);
+    while ((TIM_GetCounter(TIM2) - t0) < us) {
+    }
+}
+
+static void HCSR04_HandleCapture(uint8_t id, uint16_t channel, uint32_t ts)
+{
+    uint32_t width;
+
+    if (HcEdgeRising[id] != 0u) {
+        HcCaptureStart[id] = ts;
+        HcEdgeRising[id]   = 0u;
+        HCSR04_SetEdge(channel, TIM_ICPolarity_Falling);
+    } else {
+        width = ts - HcCaptureStart[id];                 /* us, unsigned 랩어라운드 안전 */
+        if (width > HCSR04_ECHO_TIMEOUT_US) {
+            HcDistanceMm[id] = HCSR04_DISTANCE_INVALID;
+        } else {
+            HcDistanceMm[id] = (uint16_t)((width * 343u) / 2000u);   /* mm = us*0.1715 */
+        }
+        HcReady[id]      = 1u;
+        HcEdgeRising[id] = 1u;
+        HCSR04_SetEdge(channel, TIM_ICPolarity_Rising);
+    }
+}
+
+/* TIM2 글로벌 인터럽트 (BSP_IntVectSet으로 등록) */
+static void HCSR04_IC_ISR(void)
+{
+    if (TIM_GetITStatus(TIM2, TIM_IT_CC1) != RESET) {
+        TIM_ClearITPendingBit(TIM2, TIM_IT_CC1);
+        HCSR04_HandleCapture(0u, TIM_Channel_1, TIM_GetCapture1(TIM2));
+    }
+    if (TIM_GetITStatus(TIM2, TIM_IT_CC2) != RESET) {
+        TIM_ClearITPendingBit(TIM2, TIM_IT_CC2);
+        HCSR04_HandleCapture(1u, TIM_Channel_2, TIM_GetCapture2(TIM2));
+    }
+}
+
+/*
+*********************************************************************************************************
+* PUBLIC
+*********************************************************************************************************
+*/
 
 void HCSR04_Init(void)
 {
-    /* TODO: trigger GPIO 출력, echo 핀 타이머 입력 캡처(상승/하강 에지) 설정 */
+    GPIO_InitTypeDef        gpio;
+    TIM_TimeBaseInitTypeDef tb;
+    uint8_t                 i;
+
+    for (i = 0u; i < HCSR04_SENSOR_COUNT; i++) {
+        HcEdgeRising[i] = 1u;
+        HcReady[i]      = 0u;
+        HcDistanceMm[i] = HCSR04_DISTANCE_INVALID;
+    }
+
+    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA | RCC_AHB1Periph_GPIOE, ENABLE);
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
+
+    /* TRIG: PE0, PE1 출력 */
+    gpio.GPIO_Pin   = GPIO_Pin_0 | GPIO_Pin_1;
+    gpio.GPIO_Mode  = GPIO_Mode_OUT;
+    gpio.GPIO_OType = GPIO_OType_PP;
+    gpio.GPIO_PuPd  = GPIO_PuPd_NOPULL;
+    gpio.GPIO_Speed = GPIO_Speed_2MHz;
+    GPIO_Init(GPIOE, &gpio);
+    GPIO_ResetBits(GPIOE, GPIO_Pin_0 | GPIO_Pin_1);
+
+    /* ECHO: PA0, PA1 -> TIM2 AF1 */
+    gpio.GPIO_Pin   = GPIO_Pin_0 | GPIO_Pin_1;
+    gpio.GPIO_Mode  = GPIO_Mode_AF;
+    gpio.GPIO_OType = GPIO_OType_PP;
+    gpio.GPIO_PuPd  = GPIO_PuPd_DOWN;            /* echo 평상시 LOW */
+    gpio.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(GPIOA, &gpio);
+    GPIO_PinAFConfig(GPIOA, GPIO_PinSource0, GPIO_AF_TIM2);
+    GPIO_PinAFConfig(GPIOA, GPIO_PinSource1, GPIO_AF_TIM2);
+
+    /* TIM2: 1us/tick, 32-bit 자유 구동 */
+    tb.TIM_Prescaler         = HCSR04_TIM_PSC;
+    tb.TIM_CounterMode       = TIM_CounterMode_Up;
+    tb.TIM_Period            = 0xFFFFFFFFu;
+    tb.TIM_ClockDivision     = TIM_CKD_DIV1;
+    tb.TIM_RepetitionCounter = 0u;
+    TIM_TimeBaseInit(TIM2, &tb);
+
+    HCSR04_SetEdge(TIM_Channel_1, TIM_ICPolarity_Rising);
+    HCSR04_SetEdge(TIM_Channel_2, TIM_ICPolarity_Rising);
+
+    TIM_ITConfig(TIM2, TIM_IT_CC1 | TIM_IT_CC2, ENABLE);
+    TIM_Cmd(TIM2, ENABLE);
+
+    BSP_IntVectSet(BSP_INT_ID_TIM2, HCSR04_IC_ISR);
+    BSP_IntPrioSet(BSP_INT_ID_TIM2, 5u);
+    BSP_IntEn(BSP_INT_ID_TIM2);
 }
 
 void HCSR04_Trigger(uint8_t sensor_id)
 {
-    (void)sensor_id;
-    /* TODO: 해당 센서의 trigger 핀에 10us 펄스 출력. 센서 간 간섭 방지를 위해 순차 호출. */
+    if (sensor_id >= HCSR04_SENSOR_COUNT) {
+        return;
+    }
+
+    HcReady[sensor_id]      = 0u;
+    HcEdgeRising[sensor_id] = 1u;                            /* 다음 캡처는 상승부터 */
+    HCSR04_SetEdge(HcEchoChannel[sensor_id], TIM_ICPolarity_Rising);
+
+    GPIO_SetBits(GPIOE, HcTrigPin[sensor_id]);
+    HCSR04_DelayUs(10u);
+    GPIO_ResetBits(GPIOE, HcTrigPin[sensor_id]);
 }
 
 uint16_t HCSR04_ReadDistance(uint8_t sensor_id)
 {
-    (void)sensor_id;
-    /* TODO: 입력 캡처로 받은 echo 펄스 폭(us)을 거리(mm)로 환산하여 반환.
-     *       거리 = echo_us * 0.343 / 2 (mm). 측정 실패 시 HCSR04_DISTANCE_INVALID. */
-    return HCSR04_DISTANCE_INVALID;
+    if (sensor_id >= HCSR04_SENSOR_COUNT) {
+        return HCSR04_DISTANCE_INVALID;
+    }
+    if (HcReady[sensor_id] == 0u) {
+        return HCSR04_DISTANCE_INVALID;                     /* echo 미수신 = 타임아웃 */
+    }
+    return HcDistanceMm[sensor_id];
 }
