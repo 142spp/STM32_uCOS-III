@@ -30,8 +30,6 @@ static void ButtonTask(void *p_arg)
 
     (void)p_arg;
 
-    OSSemCreate(&ButtonSem, "Button Semaphore", 0u, &err);
-
     while (DEF_TRUE) {
         OSSemPend(&ButtonSem, 0u, OS_OPT_PEND_BLOCKING, (CPU_TS *)0, &err);
         OSTimeDlyHMSM(0u, 0u, 0u, BUTTON_DEBOUNCE_MS, OS_OPT_TIME_HMSM_STRICT, &err);
@@ -48,6 +46,9 @@ static void ButtonTask(void *p_arg)
 void ButtonTask_Create(void)
 {
     OS_ERR  err;
+
+    /* ISR가 EXTI에서 post할 수 있도록 task 시작 전에 미리 생성한다. */
+    OSSemCreate(&ButtonSem, "Button Semaphore", 0u, &err);
 
     OSTaskCreate(&ButtonTCB,
                  "Button Task",
