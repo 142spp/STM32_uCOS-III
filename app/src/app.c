@@ -110,11 +110,8 @@ static void AppTaskStart(void *p_arg)
     ParkingApp_Init();          /* IPC + 전체 task 생성 (ButtonTask가 ButtonSem 생성) */
     AppButtonExtiInit();         /* 출차 버튼 EXTI: ISR이 ButtonTask를 깨운다 */
 
-    while (DEF_TRUE) {
-        OSTimeDlyHMSM(0u, 0u, 1u, 0u,
-                      OS_OPT_TIME_HMSM_STRICT,
-                      &err);
-    }
+    /* 부팅용 task는 초기화만 마치면 할 일이 없으므로 자신을 삭제한다. (task는 return 금지) */
+    OSTaskDel((OS_TCB *)0, &err);
 }
 
 /*
