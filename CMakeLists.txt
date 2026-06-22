@@ -17,6 +17,8 @@ set(LINKER_SCRIPT "${PLATFORM_DIR}/startup/stm32f4_flash.ld")
 
 file(GLOB APP_SOURCES CONFIGURE_DEPENDS
     "${APP_DIR}/src/*.c"
+    "${APP_DIR}/src/tasks/*.c"
+    "${APP_DIR}/src/drivers/*.c"
 )
 
 file(GLOB BSP_SOURCES CONFIGURE_DEPENDS
@@ -61,6 +63,8 @@ add_executable(f429zi_os3_gcc.elf
 
 target_include_directories(f429zi_os3_gcc.elf PRIVATE
     "${APP_DIR}/src"
+    "${APP_DIR}/src/tasks"
+    "${APP_DIR}/src/drivers"
     "${APP_DIR}/config"
     "${PLATFORM_DIR}/bsp"
     "${PLATFORM_DIR}/cmsis"
