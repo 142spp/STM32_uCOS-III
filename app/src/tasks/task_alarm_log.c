@@ -11,6 +11,7 @@
 #include  "app_types.h"
 #include  "ipc.h"
 #include  "drv_buzzer.h"
+#include  "drv_usart.h"
 
 static  OS_TCB   AlarmLogTCB;
 static  CPU_STK  AlarmLogStk[APP_TASK_STK_SIZE];
@@ -30,8 +31,10 @@ static void AlarmLogTask(void *p_arg)
         if (err != OS_ERR_NONE) {
             continue;
         }
-        (void)p_data;
-        /* TODO: 이벤트 코드에 따라 USART 로그 출력 및 만차 시 부저 On/Off */
+        /* LogQueue 메시지는 정적 문자열 포인터. USART 출력을 이 task로 단일화한다. */
+        Usart_PutStr((const char *)p_data);
+
+        /* TODO: 만차 등 경고 이벤트일 때 Buzzer_On()/Buzzer_Off() 처리 */
     }
 }
 
