@@ -18,6 +18,7 @@ static void SlotSensorTask(void *p_arg)
 {
     OS_ERR       err;
     CPU_INT08U   slot;
+    CPU_INT16U   dist;
     MANAGER_MSG *p_msg;
 
     (void)p_arg;
@@ -25,20 +26,25 @@ static void SlotSensorTask(void *p_arg)
     HCSR04_Init();
 
     while (DEF_TRUE) {
+        /* 센서 간섭을 막기 위해 한 번에 한 칸씩 trigger -> echo 대기 -> 읽기. */
         for (slot = 0u; slot < APP_SLOT_COUNT; slot++) {
-            /* TODO: 센서 간섭을 막기 위해 한 번에 하나씩 측정한다. */
             HCSR04_Trigger(slot);
-            OSTimeDlyHMSM(0u, 0u, 0u, 60u, OS_OPT_TIME_HMSM_STRICT, &err);   /* echo 대기 (TODO 보정) */
+            OSTimeDlyHMSM(0u, 0u, 0u, 60u, OS_OPT_TIME_HMSM_STRICT, &err);   /* echo 왕복 + 잔향 여유 */
+
+            dist = HCSR04_ReadDistance(slot);
+            if (dist == HCSR04_DISTANCE_INVALID) {
+                dist = APP_DISTANCE_INVALID;    /* 드라이버 센티넬을 app 레이어 값으로 정규화 */
+            }
 
             p_msg = IPC_MsgAlloc();
             if (p_msg != (MANAGER_MSG *)0) {
                 p_msg->type        = MSG_SENSOR;
                 p_msg->slot_id     = slot;
-                p_msg->distance_mm = HCSR04_ReadDistance(slot);
+                p_msg->distance_mm = dist;
                 IPC_PostManager(p_msg);
             }
         }
-        OSTimeDlyHMSM(0u, 0u, 0u, 200u, OS_OPT_TIME_HMSM_STRICT, &err);      /* 측정 주기 (TODO 보정) */
+        OSTimeDlyHMSM(0u, 0u, 0u, 200u, OS_OPT_TIME_HMSM_STRICT, &err);      /* 칸 한 바퀴 후 측정 주기 */
     }
 }
 

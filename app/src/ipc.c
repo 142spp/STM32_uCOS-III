@@ -17,6 +17,7 @@ OS_Q     GateCommandQueue;
 OS_Q     DisplayQueue;
 OS_Q     LogQueue;
 OS_TMR   GateTimer;
+OS_TMR   ReserveTimer[APP_SLOT_COUNT];
 
 #define  IPC_MANAGER_Q_SIZE     16u
 #define  IPC_GATE_Q_SIZE        8u
@@ -55,6 +56,21 @@ static void IPC_GateTimerCb(void *p_tmr, void *p_arg)
     }
 }
 
+/* 예약 타이머 만료 콜백: p_arg에 인코딩된 slot_id로 어느 칸이 만료됐는지 전달한다. */
+static void IPC_ReserveTimerCb(void *p_tmr, void *p_arg)
+{
+    MANAGER_MSG *p_msg;
+
+    (void)p_tmr;
+
+    p_msg = IPC_MsgAlloc();
+    if (p_msg != (MANAGER_MSG *)0) {
+        p_msg->type    = MSG_RESERVE_TIMEOUT;
+        p_msg->slot_id = (CPU_INT08U)(CPU_ADDR)p_arg;
+        IPC_PostManager(p_msg);
+    }
+}
+
 /*
 *********************************************************************************************************
 * IPC_Init()
@@ -63,7 +79,8 @@ static void IPC_GateTimerCb(void *p_tmr, void *p_arg)
 
 void IPC_Init(void)
 {
-    OS_ERR  err;
+    OS_ERR      err;
+    CPU_INT08U  i;
 
     OSQCreate(&ManagerQueue,     "Manager Queue",      IPC_MANAGER_Q_SIZE, &err);
     OSQCreate(&GateCommandQueue, "Gate Command Queue", IPC_GATE_Q_SIZE,    &err);
@@ -93,6 +110,18 @@ void IPC_Init(void)
                 IPC_GateTimerCb,
                 (void *)0,
                 &err);
+
+    /* 칸별 예약 타임아웃 타이머. 콜백 p_arg에 slot_id를 인코딩해 만료 칸을 식별한다. */
+    for (i = 0u; i < APP_SLOT_COUNT; i++) {
+        OSTmrCreate(&ReserveTimer[i],
+                    "Reserve Timeout Timer",
+                    (OS_TICK)(APP_RESERVE_TIMEOUT_SEC * 10u),
+                    0u,                                 /* one-shot                                  */
+                    OS_OPT_TMR_ONE_SHOT,
+                    IPC_ReserveTimerCb,
+                    (void *)(CPU_ADDR)i,
+                    &err);
+    }
 }
 
 /*
@@ -174,4 +203,22 @@ void IPC_PostLog(LOG_EVENT event)
             sizeof(void *),
             OS_OPT_POST_FIFO,
             &err);
+}
+
+void IPC_ReserveStart(CPU_INT08U slot)
+{
+    OS_ERR  err;
+
+    if (slot < APP_SLOT_COUNT) {
+        OSTmrStart(&ReserveTimer[slot], &err);      /* 실행 중이면 재시작 */
+    }
+}
+
+void IPC_ReserveStop(CPU_INT08U slot)
+{
+    OS_ERR  err;
+
+    if (slot < APP_SLOT_COUNT) {
+        OSTmrStop(&ReserveTimer[slot], OS_OPT_TMR_NONE, (void *)0, &err);
+    }
 }

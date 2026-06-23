@@ -19,6 +19,10 @@ static  SLOT_STATE  SlotState[APP_SLOT_COUNT];
 static  CPU_INT08U  FreeCount;
 static  CPU_BOOLEAN GateOpen;
 
+/* 히스테리시스: 같은 판정이 몇 회 연속됐는지 센다. 둘 중 하나만 누적된다. */
+static  CPU_INT08U  OccCount[APP_SLOT_COUNT];   /* 연속 "점유" 판정 횟수 */
+static  CPU_INT08U  EmpCount[APP_SLOT_COUNT];   /* 연속 "비점유" 판정 횟수 */
+
 /*
 *********************************************************************************************************
 * LOCAL HELPERS (TODO: 실제 로직 채우기)
@@ -60,7 +64,11 @@ static void Manager_SendDisplay(void)
     IPC_PostDisplay(p_disp);
 }
 
-/* 측정 거리로 한 칸의 점유 상태 갱신. RESERVED는 점유 확정 시에만 OCCUPIED로 바뀐다. */
+/* 측정 거리로 한 칸의 점유 상태 갱신.
+ * - 측정 실패(INVALID)는 무시한다 (떨림으로 카운트하지 않음).
+ * - 같은 판정이 APP_SENSOR_HYST_CNT회 연속될 때만 상태를 바꾼다 (히스테리시스).
+ * - RESERVED는 점유 확정(차가 실제로 들어옴) 시에만 OCCUPIED로 바뀐다.
+ */
 static void Manager_OnSensor(CPU_INT08U slot, CPU_INT16U dist_mm)
 {
     CPU_BOOLEAN occupied;
@@ -68,13 +76,32 @@ static void Manager_OnSensor(CPU_INT08U slot, CPU_INT16U dist_mm)
     if (slot >= APP_SLOT_COUNT) {
         return;
     }
+    if (dist_mm == APP_DISTANCE_INVALID) {
+        return;                                 /* 측정 실패는 어느 쪽으로도 카운트하지 않는다 */
+    }
+
     occupied = (dist_mm < APP_OCCUPIED_THRESHOLD_MM) ? DEF_TRUE : DEF_FALSE;
 
-    /* TODO: 히스테리시스/연속 N회 일치로 떨림 방지 */
     if (occupied) {
-        SlotState[slot] = SLOT_OCCUPIED;        /* RESERVED -> OCCUPIED 확정 포함 */
-    } else if (SlotState[slot] != SLOT_RESERVED) {
-        SlotState[slot] = SLOT_EMPTY;           /* 예약 중인 칸은 비우지 않는다 */
+        EmpCount[slot] = 0u;
+        if (OccCount[slot] < APP_SENSOR_HYST_CNT) {
+            OccCount[slot]++;
+        }
+        if (OccCount[slot] >= APP_SENSOR_HYST_CNT) {
+            if (SlotState[slot] == SLOT_RESERVED) {
+                IPC_ReserveStop(slot);          /* 예약이 실제 입차로 완료됨 */
+            }
+            SlotState[slot] = SLOT_OCCUPIED;    /* RESERVED -> OCCUPIED 확정 포함 */
+        }
+    } else {
+        OccCount[slot] = 0u;
+        if (EmpCount[slot] < APP_SENSOR_HYST_CNT) {
+            EmpCount[slot]++;
+        }
+        /* 예약 중인 칸은 센서가 비었다고 해도 비우지 않는다 (예약 타이머가 해제 담당). */
+        if ((EmpCount[slot] >= APP_SENSOR_HYST_CNT) && (SlotState[slot] != SLOT_RESERVED)) {
+            SlotState[slot] = SLOT_EMPTY;
+        }
     }
     Manager_RecountFree();
 }
@@ -90,7 +117,10 @@ static void Manager_OnEntrance(void)
     if (FreeCount > 0u) {
         for (i = 0u; i < APP_SLOT_COUNT; i++) {
             if (SlotState[i] == SLOT_EMPTY) {
-                SlotState[i] = SLOT_RESERVED;   /* 마지막 한 자리 중복 허용 방지 */
+                SlotState[i]   = SLOT_RESERVED; /* 마지막 한 자리 중복 허용 방지 */
+                OccCount[i]    = 0u;            /* 입차 확정 판정을 처음부터 새로 센다 */
+                EmpCount[i]    = 0u;
+                IPC_ReserveStart(i);            /* 입차 미확인 시 자동 해제 */
                 break;
             }
         }
@@ -118,6 +148,22 @@ static void Manager_OnExit(void)
     IPC_PostLog(LOG_EXIT);
 }
 
+/* 예약 타임아웃: 입차를 허용했지만 차가 실제로 들어오지 않은 칸을 다시 비운다.
+ * 이미 OCCUPIED로 확정된 경우(만료 직전 입차 완료)는 무시한다. */
+static void Manager_OnReserveTimeout(CPU_INT08U slot)
+{
+    if (slot >= APP_SLOT_COUNT) {
+        return;
+    }
+    if (SlotState[slot] == SLOT_RESERVED) {
+        SlotState[slot] = SLOT_EMPTY;
+        OccCount[slot]  = 0u;
+        EmpCount[slot]  = 0u;
+        Manager_RecountFree();
+        IPC_PostLog(LOG_RESERVE_EXPIRED);
+    }
+}
+
 /*
 *********************************************************************************************************
 * TASK
@@ -135,6 +181,8 @@ static void ParkingManagerTask(void *p_arg)
 
     for (i = 0u; i < APP_SLOT_COUNT; i++) {
         SlotState[i] = SLOT_EMPTY;
+        OccCount[i]  = 0u;
+        EmpCount[i]  = 0u;
     }
     FreeCount = APP_SLOT_COUNT;
     GateOpen  = DEF_FALSE;
@@ -147,11 +195,12 @@ static void ParkingManagerTask(void *p_arg)
         }
 
         switch (p_msg->type) {
-            case MSG_SENSOR:        Manager_OnSensor(p_msg->slot_id, p_msg->distance_mm); break;
-            case MSG_ENTRANCE:      Manager_OnEntrance();                                 break;
-            case MSG_EXIT:          Manager_OnExit();                                     break;
-            case MSG_GATE_TIMEOUT:  Manager_OnGateTimeout();                              break;
-            default:                                                                      break;
+            case MSG_SENSOR:          Manager_OnSensor(p_msg->slot_id, p_msg->distance_mm); break;
+            case MSG_ENTRANCE:        Manager_OnEntrance();                                 break;
+            case MSG_EXIT:            Manager_OnExit();                                     break;
+            case MSG_GATE_TIMEOUT:    Manager_OnGateTimeout();                              break;
+            case MSG_RESERVE_TIMEOUT: Manager_OnReserveTimeout(p_msg->slot_id);             break;
+            default:                                                                        break;
         }
 
         IPC_MsgFree(p_msg);

@@ -24,6 +24,9 @@ extern  OS_Q     LogQueue;
 /* 차단기 자동 닫힘 타이머 (만료 시 ManagerQueue로 MSG_GATE_TIMEOUT 전송) */
 extern  OS_TMR   GateTimer;
 
+/* 칸별 예약 타임아웃 타이머 (만료 시 ManagerQueue로 MSG_RESERVE_TIMEOUT 전송) */
+extern  OS_TMR   ReserveTimer[APP_SLOT_COUNT];
+
 /* 모든 OS 객체 생성 */
 void         IPC_Init        (void);
 
@@ -39,5 +42,9 @@ void         IPC_PostDisplay  (DISPLAY_MSG *p_msg);
 
 /* LogQueue: LOG_EVENT 코드를 포인터에 인코딩해 전송 (풀 불필요) */
 void         IPC_PostLog      (LOG_EVENT event);
+
+/* 칸별 예약 타임아웃 타이머 제어 (입차 허용 시 시작, 점유 확정 시 정지) */
+void         IPC_ReserveStart (CPU_INT08U slot);
+void         IPC_ReserveStop  (CPU_INT08U slot);
 
 #endif  /* IPC_H */

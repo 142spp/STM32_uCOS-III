@@ -59,6 +59,10 @@ static void AlarmLogTask(void *p_arg)
                 Usart_PutStr("[BUTTON] exit_event_logged\r\n");
                 break;
 
+            case LOG_RESERVE_EXPIRED:
+                Usart_PutStr("[EVENT] reservation_expired\r\n");
+                break;
+
             default:
                 break;
         }

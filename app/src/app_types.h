@@ -19,8 +19,11 @@
 */
 
 #define  APP_SLOT_COUNT                 2u      /* 기본 주차칸 수 (배열 기반, 4칸까지 확장)            */
-#define  APP_OCCUPIED_THRESHOLD_MM      150u    /* 이 거리(mm) 미만이면 점유로 판단 (히스테리시스는 구현 시) */
+#define  APP_OCCUPIED_THRESHOLD_MM      150u    /* 이 거리(mm) 미만이면 점유로 판단                     */
+#define  APP_DISTANCE_INVALID           0xFFFFu /* 측정 실패 (드라이버 INVALID를 이 값으로 정규화)      */
+#define  APP_SENSOR_HYST_CNT            3u      /* 같은 판정이 N회 연속이어야 상태를 바꾼다(떨림 방지) */
 #define  APP_GATE_OPEN_SEC              5u      /* 차단기를 연 뒤 자동으로 닫기까지의 시간 N(초)        */
+#define  APP_RESERVE_TIMEOUT_SEC        10u     /* 예약 후 이 시간(초) 내 입차 미확인 시 예약 해제      */
 
 /*
 *********************************************************************************************************
@@ -62,7 +65,8 @@ typedef enum {
     MSG_SENSOR = 0,                             /* SlotSensorTask: 측정값                              */
     MSG_ENTRANCE,                               /* EntranceTask: 입구 차량 접근                        */
     MSG_EXIT,                                   /* ButtonTask: 출차/관리자 이벤트                      */
-    MSG_GATE_TIMEOUT                            /* Gate OSTmr: 차단기 개방 후 N초 경과                 */
+    MSG_GATE_TIMEOUT,                           /* Gate OSTmr: 차단기 개방 후 N초 경과                 */
+    MSG_RESERVE_TIMEOUT                         /* Reserve OSTmr: 예약 후 입차 미확인 (slot_id 사용)   */
 } MANAGER_MSG_TYPE;
 
 typedef struct {
@@ -107,7 +111,8 @@ typedef enum {
     LOG_GATE_OPEN,                              /* "[GATE] open"                                       */
     LOG_GATE_CLOSE,                             /* "[GATE] close"                                      */
     LOG_FULL_DENIED,                            /* "[ALARM] parking_full entrance_denied" + 부저       */
-    LOG_EXIT                                    /* "[BUTTON] exit_event_logged"                        */
+    LOG_EXIT,                                   /* "[BUTTON] exit_event_logged"                        */
+    LOG_RESERVE_EXPIRED                         /* "[EVENT] reservation_expired" (입차 미확인 해제)    */
 } LOG_EVENT;
 
 #endif  /* APP_TYPES_H */
