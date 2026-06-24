@@ -3,7 +3,7 @@
 * Smart Parking - drv_hcsr04.c
 *
 * HC-SR04 x2. echo 펄스 폭을 TIM2 입력 캡처 인터럽트로 측정한다.
-*   TRIG : PE0 (sensor0), PE1 (sensor1)  - GPIO 출력
+*   TRIG : PE0 (sensor0), PE11=Arduino D5 (sensor1)  - GPIO 출력
 *   ECHO : PA0 (TIM2_CH1), PA3 (TIM2_CH4) - AF1, 5V이므로 분압 회로 필수
 *          (PA1은 NUCLEO-F429ZI 온보드 이더넷 RMII_REF_CLK이라 사용 불가 -> PA3로)
 *
@@ -26,7 +26,7 @@
 /* HCLK 168MHz -> APB1 42MHz -> APB1 타이머(TIM2) 84MHz. /84 = 1MHz(1us/tick) */
 #define  HCSR04_TIM_PSC          (84u - 1u)
 
-static const uint16_t HcTrigPin[HCSR04_SENSOR_COUNT]    = { GPIO_Pin_0,    GPIO_Pin_1    };
+static const uint16_t HcTrigPin[HCSR04_SENSOR_COUNT]    = { GPIO_Pin_0,    GPIO_Pin_11   };
 static const uint16_t HcEchoChannel[HCSR04_SENSOR_COUNT] = { TIM_Channel_1, TIM_Channel_4 };
 static const uint16_t HcEchoIt[HCSR04_SENSOR_COUNT]      = { TIM_IT_CC1,    TIM_IT_CC4    };
 static const uint16_t HcEchoFlag[HCSR04_SENSOR_COUNT]    = { TIM_FLAG_CC1,  TIM_FLAG_CC4  };
@@ -122,14 +122,14 @@ void HCSR04_Init(void)
     RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA | RCC_AHB1Periph_GPIOE, ENABLE);
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
 
-    /* TRIG: PE0, PE1 출력 */
-    gpio.GPIO_Pin   = GPIO_Pin_0 | GPIO_Pin_1;
+    /* TRIG: PE0(sensor0), PE11=Arduino D5(sensor1) 출력 */
+    gpio.GPIO_Pin   = GPIO_Pin_0 | GPIO_Pin_11;
     gpio.GPIO_Mode  = GPIO_Mode_OUT;
     gpio.GPIO_OType = GPIO_OType_PP;
     gpio.GPIO_PuPd  = GPIO_PuPd_NOPULL;
     gpio.GPIO_Speed = GPIO_Speed_2MHz;
     GPIO_Init(GPIOE, &gpio);
-    GPIO_ResetBits(GPIOE, GPIO_Pin_0 | GPIO_Pin_1);
+    GPIO_ResetBits(GPIOE, GPIO_Pin_0 | GPIO_Pin_11);
 
     /* ECHO: PA0(CH1), PA3(CH4) -> TIM2 AF1 */
     gpio.GPIO_Pin   = GPIO_Pin_0 | GPIO_Pin_3;
