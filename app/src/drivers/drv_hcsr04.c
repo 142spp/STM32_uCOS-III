@@ -2,10 +2,10 @@
 *********************************************************************************************************
 * Smart Parking - drv_hcsr04.c
 *
-* HC-SR04 x2. echo 펄스 폭을 TIM2 입력 캡처 인터럽트로 측정한다.
-*   TRIG : PE0 (sensor0), PE11=Arduino D5 (sensor1)  - GPIO 출력
-*   ECHO : PA0 (TIM2_CH1), PA3 (TIM2_CH4) - AF1, 5V이므로 분압 회로 필수
-*          (PA1은 NUCLEO-F429ZI 온보드 이더넷 RMII_REF_CLK이라 사용 불가 -> PA3로)
+* HC-SR04 x4. echo 펄스 폭을 TIM2 입력 캡처 인터럽트로 측정한다 (4채널 전부 TIM2).
+*   TRIG : PE0(s0), PE11=D5(s1), PE9=D6(s2), PE13=D3(s3)  - GPIO 출력 (전부 GPIOE)
+*   ECHO : PA0(CH1,s0), PA3(CH4,s1), PB10(CH3,s2), PB3(CH2,s3) - AF1, 5V이므로 분압 회로 필수
+*          PA1/PA2는 온보드 이더넷(RMII)이라 사용 불가. PB3은 SWO 핀이지만 SWD 플래시엔 무관.
 *
 * TIM2(32-bit)를 1us/tick로 구동. ISR은 에지 타임스탬프 캡처와 거리 환산만 하고
 * OS는 호출하지 않는다(RTOS 비의존). 대기는 호출 task가 OSTimeDly로 담당한다.
@@ -20,17 +20,18 @@
 #include  "misc.h"
 #include  "bsp.h"
 
-#define  HCSR04_SENSOR_COUNT     2u
+#define  HCSR04_SENSOR_COUNT     4u
 #define  HCSR04_ECHO_TIMEOUT_US  25000u         /* ~4.3m 초과는 무효 처리                              */
 
 /* HCLK 168MHz -> APB1 42MHz -> APB1 타이머(TIM2) 84MHz. /84 = 1MHz(1us/tick) */
 #define  HCSR04_TIM_PSC          (84u - 1u)
 
-static const uint16_t HcTrigPin[HCSR04_SENSOR_COUNT]    = { GPIO_Pin_0,    GPIO_Pin_11   };
-static const uint16_t HcEchoChannel[HCSR04_SENSOR_COUNT] = { TIM_Channel_1, TIM_Channel_4 };
-static const uint16_t HcEchoIt[HCSR04_SENSOR_COUNT]      = { TIM_IT_CC1,    TIM_IT_CC4    };
-static const uint16_t HcEchoFlag[HCSR04_SENSOR_COUNT]    = { TIM_FLAG_CC1,  TIM_FLAG_CC4  };
-static const uint16_t HcEchoOfFlag[HCSR04_SENSOR_COUNT]  = { TIM_FLAG_CC1OF, TIM_FLAG_CC4OF };
+/* index = sensor_id. TRIG는 전부 GPIOE, ECHO는 TIM2 채널(아래 매핑). */
+static const uint16_t HcTrigPin[HCSR04_SENSOR_COUNT]     = { GPIO_Pin_0,     GPIO_Pin_11,    GPIO_Pin_9,     GPIO_Pin_13    };
+static const uint16_t HcEchoChannel[HCSR04_SENSOR_COUNT] = { TIM_Channel_1,  TIM_Channel_4,  TIM_Channel_3,  TIM_Channel_2  };
+static const uint16_t HcEchoIt[HCSR04_SENSOR_COUNT]      = { TIM_IT_CC1,     TIM_IT_CC4,     TIM_IT_CC3,     TIM_IT_CC2     };
+static const uint16_t HcEchoFlag[HCSR04_SENSOR_COUNT]    = { TIM_FLAG_CC1,   TIM_FLAG_CC4,   TIM_FLAG_CC3,   TIM_FLAG_CC2   };
+static const uint16_t HcEchoOfFlag[HCSR04_SENSOR_COUNT]  = { TIM_FLAG_CC1OF, TIM_FLAG_CC4OF, TIM_FLAG_CC3OF, TIM_FLAG_CC2OF };
 
 static volatile uint32_t HcCaptureStart[HCSR04_SENSOR_COUNT];
 static volatile uint16_t HcDistanceMm[HCSR04_SENSOR_COUNT];
@@ -42,6 +43,26 @@ static volatile uint8_t  HcReady[HCSR04_SENSOR_COUNT];
 * LOCAL HELPERS
 *********************************************************************************************************
 */
+
+static uint16_t HCSR04_ChannelToIt(uint16_t channel)
+{
+    switch (channel) {
+        case TIM_Channel_1: return TIM_IT_CC1;
+        case TIM_Channel_2: return TIM_IT_CC2;
+        case TIM_Channel_3: return TIM_IT_CC3;
+        default:            return TIM_IT_CC4;
+    }
+}
+
+static uint32_t HCSR04_GetCapture(uint16_t channel)
+{
+    switch (channel) {
+        case TIM_Channel_1: return TIM_GetCapture1(TIM2);
+        case TIM_Channel_2: return TIM_GetCapture2(TIM2);
+        case TIM_Channel_3: return TIM_GetCapture3(TIM2);
+        default:            return TIM_GetCapture4(TIM2);
+    }
+}
 
 static void HCSR04_SetEdge(uint16_t channel, uint16_t polarity)
 {
@@ -79,26 +100,28 @@ static void HCSR04_HandleCapture(uint8_t id, uint16_t channel, uint32_t ts)
         }
         HcReady[id]      = 1u;
         HcEdgeRising[id] = 1u;
-        TIM_ITConfig(TIM2, (channel == TIM_Channel_1) ? TIM_IT_CC1 : TIM_IT_CC4, DISABLE);
+        TIM_ITConfig(TIM2, HCSR04_ChannelToIt(channel), DISABLE);
         HCSR04_SetEdge(channel, TIM_ICPolarity_Rising);
     }
 }
 
-/* TIM2 글로벌 인터럽트 (BSP_IntVectSet으로 등록) */
+/* TIM2 글로벌 인터럽트 (BSP_IntVectSet으로 등록). 채널은 배열 기반으로 순회. */
 static void HCSR04_IC_ISR(void)
 {
-    if (TIM_GetITStatus(TIM2, TIM_IT_CC1) != RESET) {
-        TIM_ClearITPendingBit(TIM2, TIM_IT_CC1);
-        HCSR04_HandleCapture(0u, TIM_Channel_1, TIM_GetCapture1(TIM2));
-    }
-    if (TIM_GetITStatus(TIM2, TIM_IT_CC4) != RESET) {
-        TIM_ClearITPendingBit(TIM2, TIM_IT_CC4);
-        HCSR04_HandleCapture(1u, TIM_Channel_4, TIM_GetCapture4(TIM2));
+    uint8_t  i;
+    uint16_t ch;
+
+    for (i = 0u; i < HCSR04_SENSOR_COUNT; i++) {
+        if (TIM_GetITStatus(TIM2, HcEchoIt[i]) != RESET) {
+            TIM_ClearITPendingBit(TIM2, HcEchoIt[i]);
+            ch = HcEchoChannel[i];
+            HCSR04_HandleCapture(i, ch, HCSR04_GetCapture(ch));
+        }
     }
 
-    TIM_ClearITPendingBit(TIM2, TIM_IT_Update | TIM_IT_CC2 |
-                                TIM_IT_CC3    | TIM_IT_Trigger);
-    TIM_ClearFlag(TIM2, TIM_FLAG_CC1OF | TIM_FLAG_CC4OF);
+    TIM_ClearITPendingBit(TIM2, TIM_IT_Update | TIM_IT_Trigger);
+    TIM_ClearFlag(TIM2, TIM_FLAG_CC1OF | TIM_FLAG_CC2OF |
+                        TIM_FLAG_CC3OF | TIM_FLAG_CC4OF);
 }
 
 /*
@@ -119,19 +142,20 @@ void HCSR04_Init(void)
         HcDistanceMm[i] = HCSR04_DISTANCE_INVALID;
     }
 
-    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA | RCC_AHB1Periph_GPIOE, ENABLE);
+    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA | RCC_AHB1Periph_GPIOB |
+                           RCC_AHB1Periph_GPIOE, ENABLE);
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
 
-    /* TRIG: PE0(sensor0), PE11=Arduino D5(sensor1) 출력 */
-    gpio.GPIO_Pin   = GPIO_Pin_0 | GPIO_Pin_11;
+    /* TRIG: PE0(s0), PE11(s1), PE9(s2), PE13(s3) 출력 - 전부 GPIOE */
+    gpio.GPIO_Pin   = GPIO_Pin_0 | GPIO_Pin_11 | GPIO_Pin_9 | GPIO_Pin_13;
     gpio.GPIO_Mode  = GPIO_Mode_OUT;
     gpio.GPIO_OType = GPIO_OType_PP;
     gpio.GPIO_PuPd  = GPIO_PuPd_NOPULL;
     gpio.GPIO_Speed = GPIO_Speed_2MHz;
     GPIO_Init(GPIOE, &gpio);
-    GPIO_ResetBits(GPIOE, GPIO_Pin_0 | GPIO_Pin_11);
+    GPIO_ResetBits(GPIOE, GPIO_Pin_0 | GPIO_Pin_11 | GPIO_Pin_9 | GPIO_Pin_13);
 
-    /* ECHO: PA0(CH1), PA3(CH4) -> TIM2 AF1 */
+    /* ECHO (GPIOA): PA0(CH1), PA3(CH4) -> TIM2 AF1 */
     gpio.GPIO_Pin   = GPIO_Pin_0 | GPIO_Pin_3;
     gpio.GPIO_Mode  = GPIO_Mode_AF;
     gpio.GPIO_OType = GPIO_OType_PP;
@@ -141,6 +165,12 @@ void HCSR04_Init(void)
     GPIO_PinAFConfig(GPIOA, GPIO_PinSource0, GPIO_AF_TIM2);
     GPIO_PinAFConfig(GPIOA, GPIO_PinSource3, GPIO_AF_TIM2);
 
+    /* ECHO (GPIOB): PB10(CH3), PB3(CH2) -> TIM2 AF1 */
+    gpio.GPIO_Pin   = GPIO_Pin_10 | GPIO_Pin_3;
+    GPIO_Init(GPIOB, &gpio);
+    GPIO_PinAFConfig(GPIOB, GPIO_PinSource10, GPIO_AF_TIM2);
+    GPIO_PinAFConfig(GPIOB, GPIO_PinSource3,  GPIO_AF_TIM2);
+
     /* TIM2: 1us/tick, 32-bit 자유 구동 */
     tb.TIM_Prescaler         = HCSR04_TIM_PSC;
     tb.TIM_CounterMode       = TIM_CounterMode_Up;
@@ -149,15 +179,17 @@ void HCSR04_Init(void)
     tb.TIM_RepetitionCounter = 0u;
     TIM_TimeBaseInit(TIM2, &tb);
 
-    HCSR04_SetEdge(TIM_Channel_1, TIM_ICPolarity_Rising);
-    HCSR04_SetEdge(TIM_Channel_4, TIM_ICPolarity_Rising);
+    for (i = 0u; i < HCSR04_SENSOR_COUNT; i++) {
+        HCSR04_SetEdge(HcEchoChannel[i], TIM_ICPolarity_Rising);
+    }
 
-    TIM_ITConfig(TIM2, TIM_IT_CC1 | TIM_IT_CC4, DISABLE);
+    TIM_ITConfig(TIM2, TIM_IT_CC1 | TIM_IT_CC2 | TIM_IT_CC3 | TIM_IT_CC4, DISABLE);
     TIM_Cmd(TIM2, ENABLE);
 
     TIM_ClearFlag(TIM2, TIM_FLAG_Update | TIM_FLAG_CC1 | TIM_FLAG_CC2 |
                         TIM_FLAG_CC3    | TIM_FLAG_CC4 | TIM_FLAG_Trigger |
-                        TIM_FLAG_CC1OF  | TIM_FLAG_CC4OF);
+                        TIM_FLAG_CC1OF  | TIM_FLAG_CC2OF |
+                        TIM_FLAG_CC3OF  | TIM_FLAG_CC4OF);
     TIM_ClearITPendingBit(TIM2, TIM_IT_Update | TIM_IT_CC1 | TIM_IT_CC2 |
                                 TIM_IT_CC3    | TIM_IT_CC4 | TIM_IT_Trigger);
     NVIC_ClearPendingIRQ(TIM2_IRQn);

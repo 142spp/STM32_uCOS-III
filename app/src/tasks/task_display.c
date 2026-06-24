@@ -68,6 +68,7 @@ static void DisplayTask(void *p_arg)
     char         l0[LCD1602_COLS + 1u];
     char         l1[LCD1602_COLS + 1u];
     CPU_INT08U   pos;
+    CPU_INT08U   i;
 
     (void)p_arg;
 
@@ -81,19 +82,19 @@ static void DisplayTask(void *p_arg)
             continue;
         }
 
-        /* line0: "FREE:x/y S1:c" (2칸 기준) */
+        /* line0: "FREE:n/N S:cccc" - 빈자리 수 + 각 칸 상태(E/O/R)를 한 줄에 */
         pos = DispAppend(l0, 0u, "FREE:");
         l0[pos++] = (char)('0' + p->free_count);
         l0[pos++] = '/';
         l0[pos++] = (char)('0' + APP_SLOT_COUNT);
-        pos = DispAppend(l0, pos, " S1:");
-        l0[pos++] = DispSlotChar(p->slot[0]);
+        pos = DispAppend(l0, pos, " S:");
+        for (i = 0u; (i < APP_SLOT_COUNT) && (pos < LCD1602_COLS); i++) {
+            l0[pos++] = DispSlotChar(p->slot[i]);
+        }
         DispPad(l0, pos);
 
-        /* line1: "S2:c G:OPEN/CLOSED" */
-        pos = DispAppend(l1, 0u, "S2:");
-        l1[pos++] = DispSlotChar(p->slot[1]);
-        pos = DispAppend(l1, pos, " G:");
+        /* line1: "GATE:OPEN/CLOSED" */
+        pos = DispAppend(l1, 0u, "GATE:");
         pos = DispAppend(l1, pos, (p->gate_open != DEF_FALSE) ? "OPEN" : "CLOSED");
         DispPad(l1, pos);
 

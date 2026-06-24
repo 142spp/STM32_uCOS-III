@@ -18,7 +18,7 @@
 *********************************************************************************************************
 */
 
-#define  APP_SLOT_COUNT                 2u      /* 기본 주차칸 수 (배열 기반, 4칸까지 확장)            */
+#define  APP_SLOT_COUNT                 4u      /* 주차칸 수 (배열 기반). LCD 표시는 6칸까지 한 줄에 가능 */
 #define  APP_OCCUPIED_THRESHOLD_MM      150u    /* 이 거리(mm) 미만이면 점유로 판단                     */
 #define  APP_DISTANCE_INVALID           0xFFFFu /* 측정 실패 (드라이버 INVALID를 이 값으로 정규화)      */
 #define  APP_SENSOR_HYST_CNT            3u      /* 같은 판정이 N회 연속이어야 상태를 바꾼다(떨림 방지) */
