@@ -18,6 +18,10 @@
 #include  "app_parking.h"
 #include  "task_button.h"
 #include  "drv_usart.h"
+#include  "drv_selftest.h"
+
+/* 1로 두면 ParkingApp 대신 드라이버 셀프테스트를 돌린다 (대상은 drv_selftest.c에서 선택). */
+#define  APP_SELFTEST   1
 
 /*
 *********************************************************************************************************
@@ -26,8 +30,10 @@
 */
 
 static  void  AppTaskStart        (void *p_arg);
+#if !APP_SELFTEST
 static  void  AppButtonExtiInit   (void);
 static  void  AppButtonISR        (void);
+#endif
 
 /*
 *********************************************************************************************************
@@ -107,11 +113,15 @@ static void AppTaskStart(void *p_arg)
 
     Usart_PutStr("\r\n[BOOT] Smart Parking\r\n");
 
+#if APP_SELFTEST
+    DrvSelfTest_Run();          /* 드라이버 단독 검증 (무한 루프, 리턴하지 않음) */
+#else
     ParkingApp_Init();          /* IPC + 전체 task 생성 (ButtonTask가 ButtonSem 생성) */
     AppButtonExtiInit();         /* 출차 버튼 EXTI: ISR이 ButtonTask를 깨운다 */
 
     /* 부팅용 task는 초기화만 마치면 할 일이 없으므로 자신을 삭제한다. (task는 return 금지) */
     OSTaskDel((OS_TCB *)0, &err);
+#endif
 }
 
 /*
@@ -121,6 +131,7 @@ static void AppTaskStart(void *p_arg)
 *********************************************************************************************************
 */
 
+#if !APP_SELFTEST
 static void AppButtonExtiInit(void)
 {
     GPIO_InitTypeDef gpio_init;
@@ -159,3 +170,4 @@ static void AppButtonISR(void)
         ButtonTask_SignalFromISR();
     }
 }
+#endif  /* !APP_SELFTEST */
