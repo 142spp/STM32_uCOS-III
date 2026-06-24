@@ -69,11 +69,12 @@ typedef enum {
     MSG_RESERVE_TIMEOUT                         /* Reserve OSTmr: 예약 후 입차 미확인 (slot_id 사용)   */
 } MANAGER_MSG_TYPE;
 
+/* aligned(4): OS_MEM 풀은 블록 크기가 4의 배수여야 한다(-fshort-enums로 sizeof가 어긋나는 것 방지). */
 typedef struct {
     MANAGER_MSG_TYPE  type;
-    CPU_INT08U        slot_id;                  /* MSG_SENSOR: 대상 주차칸 번호                        */
+    CPU_INT08U        slot_id;                  /* MSG_SENSOR/RESERVE: 대상 주차칸 번호                */
     CPU_INT16U        distance_mm;              /* MSG_SENSOR: 측정 거리(mm)                           */
-} MANAGER_MSG;
+} __attribute__((aligned(4))) MANAGER_MSG;
 
 /*
 *********************************************************************************************************
@@ -93,11 +94,12 @@ typedef enum {
 *********************************************************************************************************
 */
 
+/* aligned(4): 위와 동일. slot 수에 따라 sizeof가 4의 배수가 아니게 되는 것을 막는다. */
 typedef struct {
     CPU_INT08U   free_count;                    /* 빈자리 수                                           */
     CPU_BOOLEAN  gate_open;                     /* 차단기 열림 여부                                    */
     SLOT_STATE   slot[APP_SLOT_COUNT];          /* 각 주차칸 상태                                      */
-} DISPLAY_MSG;
+} __attribute__((aligned(4))) DISPLAY_MSG;
 
 /*
 *********************************************************************************************************

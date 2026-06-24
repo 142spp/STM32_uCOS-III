@@ -100,6 +100,10 @@ static void DisplayTask(void *p_arg)
     LCD_Clear();
     LED_Init();
 
+    /* 부팅 배너 (DisplayTask 도달 확인용 + 첫 상태 메시지 오기 전 표시) */
+    LCD_Print(0u, "Smart Parking");
+    LCD_Print(1u, "starting...");
+
     /* 이전 출력 캐시를 불가능한 값으로 초기화 -> 첫 메시지는 무조건 그린다. */
     prev0[0] = '\1';  prev0[1] = '\0';
     prev1[0] = '\1';  prev1[1] = '\0';
