@@ -32,7 +32,7 @@
 #define  ST_BUZZER   5
 #define  ST_LED      6
 
-#define  SELFTEST_TARGET   ST_LED
+#define  SELFTEST_TARGET   ST_HCSR04
 
 /*
 *********************************************************************************************************
@@ -77,7 +77,7 @@ static void ST_RunHcsr04(void)
     CPU_INT08U slot;
     CPU_INT16U dist;
 
-    Usart_PutStr("[SELFTEST] HC-SR04 x2  (S0=PE0/PA0, S1=PE11/PA3)\r\n");
+    Usart_PutStr("[SELFTEST] HC-SR04 x4  (echo PA0/PA3/PB10/PB3, trig PE0/PE11/PE9/PE13)\r\n");
     HCSR04_Init();
 
     while (DEF_TRUE) {
