@@ -17,6 +17,7 @@
 #include  "drv_lcd1602.h"
 #include  "drv_ir.h"
 #include  "drv_buzzer.h"
+#include  "drv_led.h"
 
 /*
 *********************************************************************************************************
@@ -29,8 +30,9 @@
 #define  ST_LCD      3
 #define  ST_IR       4
 #define  ST_BUZZER   5
+#define  ST_LED      6
 
-#define  SELFTEST_TARGET   ST_LCD
+#define  SELFTEST_TARGET   ST_LED
 
 /*
 *********************************************************************************************************
@@ -169,6 +171,23 @@ static void ST_RunBuzzer(void)
         ST_Dly(700u);
     }
 }
+
+#elif (SELFTEST_TARGET == ST_LED)
+/* R/G/B 각 채널을 따로 켜 색을 확인한 뒤, 상태색(초록/노랑/빨강)을 순환한다. */
+static void ST_RunLed(void)
+{
+    Usart_PutStr("[SELFTEST] RGB LED (R=PF13/D7, G=PF14/D4, B=PF15/D2, common=GND)\r\n");
+    LED_Init();
+    while (DEF_TRUE) {
+        Usart_PutStr("R\r\n");      LED_SetRGB(1u, 0u, 0u); ST_Dly(800u);
+        Usart_PutStr("G\r\n");      LED_SetRGB(0u, 1u, 0u); ST_Dly(800u);
+        Usart_PutStr("B\r\n");      LED_SetRGB(0u, 0u, 1u); ST_Dly(800u);
+        Usart_PutStr("GREEN\r\n");  LED_Set(LED_GREEN);     ST_Dly(800u);
+        Usart_PutStr("YELLOW\r\n"); LED_Set(LED_YELLOW);    ST_Dly(800u);
+        Usart_PutStr("RED\r\n");    LED_Set(LED_RED);       ST_Dly(800u);
+        Usart_PutStr("OFF\r\n");    LED_Set(LED_OFF);       ST_Dly(500u);
+    }
+}
 #endif
 
 /*
@@ -189,5 +208,7 @@ void DrvSelfTest_Run(void)
     ST_RunIr();
 #elif (SELFTEST_TARGET == ST_BUZZER)
     ST_RunBuzzer();
+#elif (SELFTEST_TARGET == ST_LED)
+    ST_RunLed();
 #endif
 }
