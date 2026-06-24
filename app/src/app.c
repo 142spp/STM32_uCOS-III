@@ -21,7 +21,7 @@
 #include  "drv_selftest.h"
 
 /* 1로 두면 ParkingApp 대신 드라이버 셀프테스트를 돌린다 (대상은 drv_selftest.c에서 선택). */
-#define  APP_SELFTEST   1
+#define  APP_SELFTEST   0
 
 /*
 *********************************************************************************************************
