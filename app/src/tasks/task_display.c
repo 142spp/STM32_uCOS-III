@@ -2,7 +2,8 @@
 *********************************************************************************************************
 * Smart Parking - task_display.c
 *
-* DisplayQueue로 받은 상태를 1602 LCD와 2색 LED에 표시한다. LCD는 이 task만 접근한다.
+* DisplayQueue로 받은 상태를 1602 LCD와 RGB LED에 표시한다. LCD/LED 모두 이 task만 접근한다.
+*   LED 색: 만차=빨강, 예약중=노랑, 빈자리=초록
 *********************************************************************************************************
 */
 
@@ -10,6 +11,7 @@
 #include  "app_types.h"
 #include  "ipc.h"
 #include  "drv_lcd1602.h"
+#include  "drv_led.h"
 
 static  OS_TCB   DisplayTCB;
 static  CPU_STK  DisplayStk[APP_TASK_STK_SIZE];
@@ -40,6 +42,22 @@ static void DispPad(char *dst, CPU_INT08U pos)
     dst[LCD1602_COLS] = '\0';
 }
 
+/* 현재 상태에 맞는 LED 색 결정: 만차=빨강, 예약중=노랑, 그 외=초록 */
+static LED_COLOR DispLedColor(const DISPLAY_MSG *p)
+{
+    CPU_INT08U i;
+
+    if (p->free_count == 0u) {
+        return LED_RED;
+    }
+    for (i = 0u; i < APP_SLOT_COUNT; i++) {
+        if (p->slot[i] == SLOT_RESERVED) {
+            return LED_YELLOW;
+        }
+    }
+    return LED_GREEN;
+}
+
 static void DisplayTask(void *p_arg)
 {
     OS_ERR       err;
@@ -53,6 +71,7 @@ static void DisplayTask(void *p_arg)
 
     LCD_Init();
     LCD_Clear();
+    LED_Init();
 
     while (DEF_TRUE) {
         p = (DISPLAY_MSG *)OSQPend(&DisplayQueue, 0u, OS_OPT_PEND_BLOCKING, &size, (CPU_TS *)0, &err);
@@ -78,6 +97,8 @@ static void DisplayTask(void *p_arg)
 
         LCD_Print(0u, l0);
         LCD_Print(1u, l1);
+
+        LED_Set(DispLedColor(p));               /* 상태색 갱신 */
 
         IPC_DisplayFree(p);
     }
