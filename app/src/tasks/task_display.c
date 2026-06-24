@@ -42,20 +42,22 @@ static void DispPad(char *dst, CPU_INT08U pos)
     dst[LCD1602_COLS] = '\0';
 }
 
-/* 현재 상태에 맞는 LED 색 결정: 만차=빨강, 예약중=노랑, 그 외=초록 */
+/* 현재 상태에 맞는 LED 색 결정.
+ * 예약(RESERVED)을 먼저 본다: 예약 칸은 free_count=0을 만들지만 만차(빨강)가 아니라
+ * 입차 진행중(노랑)이다. 예약이 하나도 없고 빈자리도 없을 때만 진짜 만차=빨강. */
 static LED_COLOR DispLedColor(const DISPLAY_MSG *p)
 {
     CPU_INT08U i;
 
-    if (p->free_count == 0u) {
-        return LED_RED;
-    }
     for (i = 0u; i < APP_SLOT_COUNT; i++) {
         if (p->slot[i] == SLOT_RESERVED) {
-            return LED_YELLOW;
+            return LED_YELLOW;                  /* 입차 진행중 (한 칸이라도 예약) */
         }
     }
-    return LED_GREEN;
+    if (p->free_count == 0u) {
+        return LED_RED;                         /* 예약 없이 전 칸 점유 = 진짜 만차 */
+    }
+    return LED_GREEN;                           /* 빈자리 있음 */
 }
 
 static void DisplayTask(void *p_arg)
