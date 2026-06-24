@@ -30,7 +30,7 @@
 #define  ST_IR       4
 #define  ST_BUZZER   5
 
-#define  SELFTEST_TARGET   ST_SERVO
+#define  SELFTEST_TARGET   ST_LCD
 
 /*
 *********************************************************************************************************

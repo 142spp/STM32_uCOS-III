@@ -3,7 +3,7 @@
 * Smart Parking - drv_lcd1602.c
 *
 * 1602 Character LCD (I2C, PCF8574 백팩, HD44780 4비트). RTOS 비의존.
-*   I2C1 : SCL=PB6, SDA=PB7 (AF4, open-drain)
+*   I2C1 : SCL=PB8(Arduino D15), SDA=PB9(Arduino D14) (AF4, open-drain)
 *   PCF8574 비트맵: P0=RS, P1=RW, P2=E, P3=Backlight, P4..P7=D4..D7
 * I2C 주소는 모듈에 따라 0x27 또는 0x3F. 실제 주소를 확인할 것.
 * 타이밍 지연은 DWT 사이클 카운터 기반 busy-wait (OS 비의존, 초기화 단계에서도 동작).
@@ -149,14 +149,14 @@ void LCD_Init(void)
     RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_I2C1, ENABLE);
 
-    gpio.GPIO_Pin   = GPIO_Pin_6 | GPIO_Pin_7;
+    gpio.GPIO_Pin   = GPIO_Pin_8 | GPIO_Pin_9;
     gpio.GPIO_Mode  = GPIO_Mode_AF;
     gpio.GPIO_OType = GPIO_OType_OD;             /* I2C 오픈 드레인 */
     gpio.GPIO_PuPd  = GPIO_PuPd_UP;
     gpio.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOB, &gpio);
-    GPIO_PinAFConfig(GPIOB, GPIO_PinSource6, GPIO_AF_I2C1);
-    GPIO_PinAFConfig(GPIOB, GPIO_PinSource7, GPIO_AF_I2C1);
+    GPIO_PinAFConfig(GPIOB, GPIO_PinSource8, GPIO_AF_I2C1);
+    GPIO_PinAFConfig(GPIOB, GPIO_PinSource9, GPIO_AF_I2C1);
 
     i2c.I2C_ClockSpeed          = 100000u;
     i2c.I2C_Mode                = I2C_Mode_I2C;
