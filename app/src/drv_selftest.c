@@ -30,7 +30,7 @@
 #define  ST_IR       4
 #define  ST_BUZZER   5
 
-#define  SELFTEST_TARGET   ST_HCSR04
+#define  SELFTEST_TARGET   ST_SERVO
 
 /*
 *********************************************************************************************************
@@ -38,13 +38,24 @@
 *********************************************************************************************************
 */
 
+/* HMSM STRICT 모드는 ms가 0~999만 허용하므로 초/밀리초로 쪼개 넘긴다. */
 static void ST_Dly(CPU_INT16U ms)
 {
     OS_ERR err;
-    OSTimeDlyHMSM(0u, 0u, 0u, ms, OS_OPT_TIME_HMSM_STRICT, &err);
+    OSTimeDlyHMSM(0u, 0u,
+                  (CPU_INT16U)(ms / 1000u),
+                  (CPU_INT16U)(ms % 1000u),
+                  OS_OPT_TIME_HMSM_STRICT, &err);
 }
 
-/* 거리값 출력: 실패 시 INVALID, 아니면 "<n> mm" */
+/*
+*********************************************************************************************************
+* TEST ROUTINES
+*********************************************************************************************************
+*/
+
+#if   (SELFTEST_TARGET == ST_HCSR04)
+/* 거리값 출력: 실패 시 INVALID, 아니면 "<n>mm" */
 static void ST_PrintDist(CPU_INT08U id, CPU_INT16U dist)
 {
     Usart_PutStr(" S");
@@ -58,13 +69,6 @@ static void ST_PrintDist(CPU_INT08U id, CPU_INT16U dist)
     }
 }
 
-/*
-*********************************************************************************************************
-* TEST ROUTINES
-*********************************************************************************************************
-*/
-
-#if   (SELFTEST_TARGET == ST_HCSR04)
 /* 손/장애물을 센서 앞에 대보면 거리값이 변해야 한다. 둘 다 정상값(보통 20~4000mm) 나오는지 확인. */
 static void ST_RunHcsr04(void)
 {
