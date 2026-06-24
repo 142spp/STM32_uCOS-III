@@ -42,6 +42,26 @@ static void DispPad(char *dst, CPU_INT08U pos)
     dst[LCD1602_COLS] = '\0';
 }
 
+/* 두 16자 라인이 같은지 (변경 감지용) */
+static CPU_BOOLEAN DispLineEq(const char *a, const char *b)
+{
+    CPU_INT08U i;
+    for (i = 0u; i <= LCD1602_COLS; i++) {
+        if (a[i] != b[i]) {
+            return DEF_FALSE;
+        }
+    }
+    return DEF_TRUE;
+}
+
+static void DispLineCpy(char *dst, const char *src)
+{
+    CPU_INT08U i;
+    for (i = 0u; i <= LCD1602_COLS; i++) {
+        dst[i] = src[i];
+    }
+}
+
 /* 현재 상태에 맞는 LED 색 결정.
  * 예약(RESERVED)을 먼저 본다: 예약 칸은 free_count=0을 만들지만 만차(빨강)가 아니라
  * 입차 진행중(노랑)이다. 예약이 하나도 없고 빈자리도 없을 때만 진짜 만차=빨강. */
@@ -67,6 +87,10 @@ static void DisplayTask(void *p_arg)
     DISPLAY_MSG *p;
     char         l0[LCD1602_COLS + 1u];
     char         l1[LCD1602_COLS + 1u];
+    char         prev0[LCD1602_COLS + 1u];
+    char         prev1[LCD1602_COLS + 1u];
+    LED_COLOR    color;
+    LED_COLOR    prev_color;
     CPU_INT08U   pos;
     CPU_INT08U   i;
 
@@ -75,6 +99,11 @@ static void DisplayTask(void *p_arg)
     LCD_Init();
     LCD_Clear();
     LED_Init();
+
+    /* 이전 출력 캐시를 불가능한 값으로 초기화 -> 첫 메시지는 무조건 그린다. */
+    prev0[0] = '\1';  prev0[1] = '\0';
+    prev1[0] = '\1';  prev1[1] = '\0';
+    prev_color = (LED_COLOR)0xFFu;
 
     while (DEF_TRUE) {
         p = (DISPLAY_MSG *)OSQPend(&DisplayQueue, 0u, OS_OPT_PEND_BLOCKING, &size, (CPU_TS *)0, &err);
@@ -98,10 +127,21 @@ static void DisplayTask(void *p_arg)
         pos = DispAppend(l1, pos, (p->gate_open != DEF_FALSE) ? "OPEN" : "CLOSED");
         DispPad(l1, pos);
 
-        LCD_Print(0u, l0);
-        LCD_Print(1u, l1);
+        /* 내용이 바뀐 줄만 다시 그린다 (불필요한 I2C 갱신 폭주/깜빡임 방지). */
+        if (!DispLineEq(l0, prev0)) {
+            LCD_Print(0u, l0);
+            DispLineCpy(prev0, l0);
+        }
+        if (!DispLineEq(l1, prev1)) {
+            LCD_Print(1u, l1);
+            DispLineCpy(prev1, l1);
+        }
 
-        LED_Set(DispLedColor(p));               /* 상태색 갱신 */
+        color = DispLedColor(p);
+        if (color != prev_color) {
+            LED_Set(color);                     /* 색이 바뀔 때만 */
+            prev_color = color;
+        }
 
         IPC_DisplayFree(p);
     }
