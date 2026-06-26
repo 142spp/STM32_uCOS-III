@@ -14,6 +14,10 @@
 static  OS_TCB   ParkingManagerTCB;
 static  CPU_STK  ParkingManagerStk[APP_TASK_STK_SIZE];
 
+/* [시연용] 마지막 칸(인덱스 3)의 HC-SR04가 고장나서, 그 칸은 센서를 무시하고
+ * 항상 점유(O)로 고정한다. 정상 하드웨어로 복구하면 이 한 줄만 지우면 된다. */
+#define  APP_FAKE_OCCUPIED_SLOT   (APP_SLOT_COUNT - 1u)
+
 /* ---- ParkingManager만 소유하는 사적 상태 (락 불필요) ---- */
 static  SLOT_STATE  SlotState[APP_SLOT_COUNT];
 static  CPU_INT08U  FreeCount;
@@ -75,6 +79,9 @@ static void Manager_OnSensor(CPU_INT08U slot, CPU_INT16U dist_mm)
 
     if (slot >= APP_SLOT_COUNT) {
         return;
+    }
+    if (slot == APP_FAKE_OCCUPIED_SLOT) {
+        return;                                 /* [시연용] 고장 센서 칸: 센서 입력 무시, 항상 점유 유지 */
     }
     if (dist_mm == APP_DISTANCE_INVALID) {
         return;                                 /* 측정 실패는 어느 쪽으로도 카운트하지 않는다 */
@@ -184,8 +191,9 @@ static void ParkingManagerTask(void *p_arg)
         OccCount[i]  = 0u;
         EmpCount[i]  = 0u;
     }
-    FreeCount = APP_SLOT_COUNT;
+    SlotState[APP_FAKE_OCCUPIED_SLOT] = SLOT_OCCUPIED;  /* [시연용] 고장 센서 칸은 항상 점유로 시작 */
     GateOpen  = DEF_FALSE;
+    Manager_RecountFree();                  /* 고정 점유칸을 반영해 빈자리 수 계산 */
 
     while (DEF_TRUE) {
         /* 이벤트가 없으면 여기서 잠들어 CPU를 양보, 메시지가 오면 즉시 깨어난다. */

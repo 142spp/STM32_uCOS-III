@@ -19,8 +19,8 @@
 #define  SERVO_TIM_PERIOD_US    20000u
 
 /* 펄스 폭(us). 실제 차단기 기구에 맞춰 보정한다. */
-#define  SERVO_PULSE_CLOSE_US   1000u           /* 닫힘 (~0도)                                         */
-#define  SERVO_PULSE_OPEN_US    2000u           /* 열림 (~180도)                                       */
+#define  SERVO_PULSE_CLOSE_US   2000u           /* 닫힘 (~180도)                                       */
+#define  SERVO_PULSE_OPEN_US    1000u           /* 열림 (~0도)                                         */
 
 void Servo_Init(void)
 {
